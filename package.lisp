@@ -8,9 +8,16 @@
            #:cycles-between
            #:time-cycles
            #:pin
+           #:set-pin
 
-           ;; core generic functions
+           #:make-pin
+           ;; pin slots are private -- set them in the constructor, doofus!
+
+           ;; Useful core functions
+           #:core-elapsed
            #:core-inc-elapsed
+           #:core-vcc
+           ;; Generic core functions (should be implemented by cores)
            #:core-one-cycle
            #:core-many-cycles
            #:core-frequency
@@ -25,7 +32,7 @@
 
 (defpackage #:gooptest-avr
   (:nicknames #:goop-avr)
-  (:use #:cl #:gooptest #:cffi)
+  (:use #:cl #:gooptest #:alexandria #:cffi #:trivial-garbage)
   (:export #:make-core
 
            ;; non-functions
@@ -33,7 +40,7 @@
            ))
 
 (defpackage #:gooptest-arduino-avr
-  (nicknames #:goopduino)
+  (:nicknames #:goopduino)
   (:use #:cl #:gooptest #:gooptest-avr)
   (:export #:make-arduino-uno
 

@@ -6,8 +6,8 @@
   :license  "GPL-3.0"
   :version "0.0.1"
   :serial t
-  :depends-on (#:cffi #:alexandria)
+  :depends-on (#:cffi #:alexandria #:trivial-garbage)
   :components ((:file "package")
-               (:file "gooptest")
-               (:file "gooptest-avr")
-               (:file "gooptest-arduino-avr")))
+               (:file "src/gooptest")
+               (:file "src/gooptest-avr")
+               (:file "src/gooptest-arduino-avr")))
