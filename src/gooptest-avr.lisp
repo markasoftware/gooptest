@@ -40,7 +40,7 @@
     (at90usb162 b c d)
     ))
 
-(defclass avr-core '(core)
+(defclass avr-core (core)
   ((ports :accessor get-ports :type pin)
    (avr-t :accessor get-avr-t)
    ))

@@ -32,11 +32,19 @@
 
 (defpackage #:gooptest-avr
   (:nicknames #:goop-avr)
-  (:use #:cl #:gooptest #:alexandria #:cffi #:trivial-garbage)
+  (:use #:cl #:gooptest #:alexandria #:cffi)
   (:export #:make-core
 
            ;; non-functions
            #:avr-core                   ; class
+           ))
+
+(defpackage #:gooptest-avr-cl-autowrap
+  (:use #:cl #:autowrap)
+  (:export #:avr-t
+           #:avr-t.frequency
+           #:avr-init
+           #:avr-register-notify-hook
            ))
 
 (defpackage #:gooptest-arduino-avr
