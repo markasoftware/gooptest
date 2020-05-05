@@ -11,7 +11,9 @@
            #:set-pin
 
            #:make-pin
-           ;; pin slots are private -- set them in the constructor, doofus!
+           #:pin-output
+           #:pin-digital-input
+           #:pin-analog-input
            ;; We already exported the pin symbol, which names the structure.
 
            ;; Useful core functions

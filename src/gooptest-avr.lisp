@@ -44,9 +44,35 @@
     ))
 
 (defclass avr-core (core)
-  ((ports :accessor get-ports :type cons) ; meh type
-   (avr-ptr :accessor get-ptr :type avr-t)
+  ((avr-ptr :accessor get-ptr :type avr-t)
+   (ports :accessor get-ports :type cons)
    ))
+
+(defun avr-ioctl-def (c1 c2 c3 c4)
+  "See simavr/sim_io.h"
+  (flet ((intify (arg)
+           (etypecase arg (integer arg) (character (char-code arg)))))
+    (+ (ash (intify c1) 24)
+       (ash (intify c2) 16)
+       (ash (intify c3) 8)
+       (intify c4))))
+
+(defmethod core-pin ((instance avr-core) p)
+  "Pin should be something like :a4 for port A, pin 4"
+  (check-type p keyword)
+  (with-alloc (ioport-state 'avr-ioport-state-t)
+    (let* ((port-char (elt (string-upcase p) 0))
+           (pin-num (parse-integer (symbol-name p) :start 1))
+           (ioctl-res
+            (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
+                       ioport-state))
+           (is-output (plusp (logand (ash 1 pin-num) (avr-ioport-state-t.ddr ioport-state))))
+           (is-high (plusp (logand (ash 1 pin-num) (avr-ioport-state-t.port ioport-state)))))
+
+      (unless (zerop ioctl-res)
+        (error "Error getting pin state"))
+      (if is-output (if is-high :high :low)
+          (if is-high :pull-up :float)))))
 
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)
@@ -73,9 +99,7 @@
     ;; TODO: set frequency (and vcc?) using elf metadata if no initarg provided.
     ;; Also, throw errors when frequency is not present (from gooptest core).
 
-    (setf (get-ports instance)
-          (mapcar (lambda (p)
-                    ;; alist of port names to pin statuses
-                    (cons p
-                          (loop for i from 1 to 8 collect (make-pin))))
-                  port-names))))
+    (setf (get-ports instance) port-names)
+    ))
+
+
