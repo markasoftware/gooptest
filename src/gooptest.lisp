@@ -9,7 +9,8 @@
 (defclass core ()
   ((elapsed :initform 0 :accessor core-elapsed)
    (vcc :initform 5 :initarg :vcc :accessor core-vcc)
-   (frequency :initarg :frequency :accessor core-frequency)))
+   (frequency :initarg :frequency :accessor core-frequency
+              :initform (error "Core frequency is required"))))
 
 (defmethod core-inc-elapsed ((c core) n)
   "Increment the elapsed cycle counter by n. Cores should call this method as
@@ -26,13 +27,15 @@
   implement this function with FFI."))
 
 (defmethod core-many-cycles ((c core) n)
+  (assert (not (minusp n)))
   (dotimes (i n)
     (core-one-cycle c)))
 
 (defgeneric core-pin (c p)
-  (:documentation "Return :high, :low, :pull-up, :pull-down, :float, or some
-  pin. How pins should be specified is more or less up to the core, depending on
-  how the manufacturer refers to their pins. All pins should be symbols."))
+  (:documentation "Return :high, :low, :pull-up, :pull-down, :float. How pins
+  should be specified is more or less up to the core, depending on how the
+  manufacturer refers to their pins. All pins should be symbols, and probably
+  keywords."))
 
 (defgeneric core-set-pin-digital (c p high)
   (:documentation "Set a digital input at a pin. Pin should be in the same
@@ -48,15 +51,6 @@
 (deftype pin-output ()
   "What an mcu might set a pin to"
   '(member :float :high :low :pull-up :pull-down))
-
-(defstruct pin
-  "Represents a sigle pin, including:
-What state the mcu has set the pin to.
-What digital value the external circuit has applied to the pin.
-What analog value the external circuit has applied to the pin."
-  (output :float :type pin-output)
-  (digital-input nil :type boolean)
-  (analog-input 0.0 :type real))
 
 (defmacro with-core (the-core &body body)
   `(let ((*core* ,the-core))
@@ -76,62 +70,102 @@ What analog value the external circuit has applied to the pin."
   (assert *core*)
   (core-pin *core* the-pin))
 
-(defun time-cycles (n &optional (unit :cycle) absolute demand-exact)
-  "Convert n of unit into a number of clock cycles. Unit can be one of :cycle,
-:ns, :us, :ms, :s, :min, :hr. Rounds down to the next CPU cycle, unless
-demand-exact is set, in which case an error is raised. If absolute is set, it
-will translate from an absolute time (since the simulation was started) into a
-relative time (from the current state of the core).
+;; A "timespec" is a list with up to one to three elements, or a single number.
+;; The first is the number of time units. The second is the time unit. The third
+;; is a boolean indicating whether the timespec is absolute (measured from
+;; boot). If a single number is used instead of a list, it is the number of
+;; relative cycles.
+
+(defmacro with-timespec (cycles-var absolute-var timespec &body body)
+  (with-gensyms (n unit)
+    (once-only (timespec)
+      `(destructuring-bind (,n &optional (,unit :cycle) ,absolute-var)
+           (ensure-list ,timespec)
+         (let ((,cycles-var
+                (if (member ,unit '(:cycle :cycles)) ,n
+                    (floor (* ,n (core-frequency *core*)
+                              (ecase ,unit
+                                ((:ns :nanosecond :nanoseconds) 1/1000000000)
+                                ((:us :microsecond :microseconds) 1/1000000)
+                                ((:ms :millisecond :milliseconds) 1/1000)
+                                ((:s :second :seconds) 1)
+                                ((:min :minute :minutes) 60)
+                                ((:hr :hour :hours) 3600)))))))
+           ,@body)))))
+
+(defun time-cycles (timespec into-absolute)
+  "Convert the given timespec into a number of cycles. If into-absolute is
+  non-nil, return a number of cycles between boot and the timespec. If nil,
+  return a number of cycles from the current state to the timespec, even if the
+  timespec itself is absolute.
 
 Respects *core*."
   (assert *core*)
-  (if (member unit '(:cycle :cycles))
-      n
-      (let ((cycles-fractional
-             (* n
-                (core-frequency *core*)
-                (ecase unit
-                  ((:ns :nanosecond :nanoseconds) 1/1000000000)
-                  ((:us :microsecond :microseconds) 1/1000000)
-                  ((:ms :millisecond :milliseconds) 1/1000)
-                  ((:s :second :seconds) 1)
-                  ((:min :minute :minutes) 60)
-                  ((:hr :hour :hours) 3600)))))
-        ;; TODO: a proper error
-        (when demand-exact
-          (assert (integerp cycles-fractional)))
-        (if absolute
-            (progn
-              (assert (>= cycles-fractional (core-elapsed *core*)))
-              (- (floor cycles-fractional) (core-elapsed *core*)))
-            (values (floor cycles-fractional))))))
+  (with-timespec n absolute timespec
+    (cond
+      ((eq absolute into-absolute) n)
+      (absolute (- n (core-elapsed *core*)))
+      (t (+ n (core-elapsed *core*))))))
 
-(defun cycles (n &optional (unit :cycle))
-  "Move forward n cycles.
+(defun timespec+ (t1 &rest ts)
+  (if (null ts) t1
+      (with-timespec n1 abs1 t1
+        (with-timespec ns abss (apply #'timespec+ ts)
+          (list (+ n1 ns) :cycle (or abs1 abss))))))
+
+(defun check-timespec (timespec)
+  "Returns :present, :past, or :future, depending on whether the timespec
+represents the present, past, or future.
+
+Respects *core*"
+  (let ((abs-cycles (time-cycles timespec t)))
+    (cond
+      ((> abs-cycles (core-elapsed *core*)) :future)
+      ((< abs-cycles (core-elapsed *core*)) :past)
+      (t :present))))
+
+(defun future-p (timespec)
+  "Check if a timespec is in the future"
+  (eq :future (check-timespec timespec)))
+
+(defun resolve-timespec (timespec)
+  "Convert the timespec, which may be relative, into an absolute timespec."
+  (list (time-cycles timespec t) :cycle t))
+
+(defun cycles (n-or-timespec &optional (unit :cycle) absolute)
+  "Move forward in time to a certain timespec. The timespec can either be given
+   as the first argument, or can be split up among the argument as suggested by
+   the lambda-list. If the timespec is in the past, does nothing.
 
 Respects *core"
   (assert *core*)
-  (let ((c (time-cycles n unit)))
-    (if (= c 1)
-        (core-one-cycle *core*)
-        (core-many-cycles *core* c))))
+  (core-many-cycles *core*
+                    (max 0 (time-cycles
+                            (etypecase n-or-timespec
+                              (cons n-or-timespec)
+                              (number (list n-or-timespec unit absolute)))
+                            nil))))
 
 (defmacro resolve-timespecs (syms &body body)
   `(let ,(loop for sym in syms
-            collect `(,sym (apply #'time-cycles (ensure-list ,sym))))
+            collect `(,sym (resolve-timespec ,sym)))
      ,@body))
 
-(defmacro cycles-between
-    ((&key (start 0) stop (finally 0) (skip 1)) &body condition)
-  "Executes :start cycles, then run condition every :skip cycles until it
-  returns non-nil. If it never returns non-nil, stop running it after :stop
-  cycles (counting from when cycles-between is called) anyway. Regardless of if
-  condition every returned non-nil, make sure at least :finally total cycles
-  have been run before returning; this ensures the core is left in a consistent
-  state every time.
+(defun until-pin (pin state &optional (timeout '(5 :seconds)) (poll 1))
+  "Waits until the pin is in the given state.
 
-  :start, :stop, :finally, and :skip may either be numbers, representing clock
-  cycles, or they may be timespecs, eg (10 :us)
+Respects *core*"
+  (resolve-timespecs timeout
+    ))
+
+(defmacro cycles-between
+    ((&key (start 0) stop (skip 1)) &body condition)
+  "Runs :start cycles, then run condition every :skip cycles until it returns
+  non-nil. If it never returns non-nil, stop running it after :stop
+  cycles (counting from when cycles-between is called) anyway. Returns the
+  result of the condition or nil if the condition never succeeded.
+
+  :start, :stop, and :skip are timespecs.
 
   Respects *core*"
   ;; TODO: look into how the hell documentation indentation works. And whether
@@ -140,19 +174,18 @@ Respects *core"
   (assert (>= stop start))
   (with-gensyms (elapsed condition-result)
     (once-only (start stop finally skip)
-      `(resolve-timespecs (,start ,stop ,finally ,skip)
+      `(resolve-timespecs (,start ,stop ,finally)
          (assert *core*)
          (cycles ,start)
          ;; TODO: verify off-by-one-errors (i.e, are the correct number of
          ;; cycles always run?)
          (loop
-            for ,elapsed from ,start to ,elapsed by ,skip
-            and ,condition-result = (progn ,@condition)
-            while (<= ,elapsed ,stop)
+            for ,condition-result = (progn ,@condition)
+            while (future-p (timespec+ (core-elapsed *core*) ,skip))
             until ,condition-result
             do (cycles ,skip)
             finally (progn
-                      (cycles (max 0 (- ,finally ,elapsed)))
+                      (cycles ,stop)
                       (return ,condition-result)))))))
 
 (defun pin-duty-cycle (p timespec &optional (poll-timespec 1))
