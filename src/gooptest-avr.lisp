@@ -1,5 +1,8 @@
 (in-package :gooptest-avr)
 
+(load-foreign-library "libelf.so")
+(load-foreign-library "libsimavr.so")
+
 ;; We have to manually keep track of pin changes. Although simavr internally
 ;; does record the states of all the pins, in registers, there's no consistent
 ;; way to access these across different cores. It might be possible to access
@@ -41,20 +44,38 @@
     ))
 
 (defclass avr-core (core)
-  ((ports :accessor get-ports :type pin)
-   (avr-t :accessor get-avr-t)
+  ((ports :accessor get-ports :type cons) ; meh type
+   (avr-ptr :accessor get-ptr :type avr-t)
    ))
 
-(defmethod initialize-instance :after ((instance avr-core) &key avr-core-name)
-  (let ((port-names (find-if
-                     (compose (curry #'member avr-core-name) #'car)
-                     *core-ports-alist*)))
+(defmethod initialize-instance :after
+    ((instance avr-core) &key mcu firmware-path)
+  (let ((firmware-namestring (namestring (truename firmware-path)))
+        (mcu-name (string-downcase mcu))
+        (port-names (cdr (find-if
+                          (compose (curry #'member-if (curry #'string-equal mcu))
+                                   #'ensure-list #'car)
+                          *core-ports-alist*))))
     (unless port-names
       ;; TODO: proper error/condition
-      (error "Unknown AVR core name"))
+      (error "Unknown mcu name"))
+
+    (setf (get-ptr instance) (avr-make-mcu-by-name mcu-name))
+    (avr-init (get-ptr instance))
+    (with-alloc (firmware 'elf-firmware-t)
+      (elf-read-firmware firmware-namestring firmware)
+      (avr-load-firmware (get-ptr instance) firmware))
+
+    ;; TODO
+    ;; (trivial-garbage:finalize instance (lambda ()
+    ;;                                      ()))
+
+    ;; TODO: set frequency (and vcc?) using elf metadata if no initarg provided.
+    ;; Also, throw errors when frequency is not present (from gooptest core).
+
     (setf (get-ports instance)
           (mapcar (lambda (p)
                     ;; alist of port names to pin statuses
                     (cons p
-                          (loop for i from 1 to 8 collect (make-instance 'pin))))
+                          (loop for i from 1 to 8 collect (make-pin))))
                   port-names))))
