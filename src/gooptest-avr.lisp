@@ -26,8 +26,8 @@
                        ioport-state))
            ;; TODO: NOT THIS NOT THIS NOT THIS FILE AN AUTOWRAP BUG
            (ioport-state-long (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
-           (ddr (mod (ash ioport-state-long -16) 255))
-           (port (mod (ash ioport-state-long -8) 255))
+           (ddr (mod (ash ioport-state-long -15) 256))
+           (port (mod (ash ioport-state-long -7) 256))
            (is-output (plusp (logand (ash 1 pin-num) ddr)))
            (is-high (plusp (logand (ash 1 pin-num) port))))
 
