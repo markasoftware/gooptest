@@ -74,6 +74,9 @@
       (if is-output (if is-high :high :low)
           (if is-high :pull-up :float)))))
 
+(defmethod core-one-cycle ((instance avr-core))
+  (avr-run (get-ptr instance)))
+
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)
   (let ((firmware-namestring (namestring (truename firmware-path)))

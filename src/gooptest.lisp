@@ -25,7 +25,7 @@
   it's faster to implement the loop in C rather than Lisp, so you may want to
   implement this function with FFI."))
 
-(defmethod core-cycles ((c core) n)
+(defmethod core-many-cycles ((c core) n)
   (dotimes (i n)
     (core-one-cycle c)))
 
