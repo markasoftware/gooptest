@@ -24,8 +24,12 @@
            (ioctl-res
             (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
                        ioport-state))
-           (is-output (plusp (logand (ash 1 pin-num) (avr-ioport-state-t.ddr ioport-state))))
-           (is-high (plusp (logand (ash 1 pin-num) (avr-ioport-state-t.port ioport-state)))))
+           ;; TODO: NOT THIS NOT THIS NOT THIS FILE AN AUTOWRAP BUG
+           (ioport-state-long (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
+           (ddr (mod (ash ioport-state-long -16) 255))
+           (port (mod (ash ioport-state-long -8) 255))
+           (is-output (plusp (logand (ash 1 pin-num) ddr)))
+           (is-high (plusp (logand (ash 1 pin-num) port))))
 
       (unless (zerop ioctl-res)
         (error "Error getting pin state"))
@@ -33,7 +37,8 @@
           (if is-high :pull-up :float)))))
 
 (defmethod core-one-cycle ((instance avr-core))
-  (avr-run (get-ptr instance)))
+  (avr-run (get-ptr instance))
+  (call-next-method))
 
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)
