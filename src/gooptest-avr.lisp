@@ -1,7 +1,7 @@
 (in-package :gooptest-avr)
 
-(load-foreign-library "libelf.so")
-(load-foreign-library "libsimavr.so")
+(cffi:load-foreign-library "libelf.so")
+(cffi:load-foreign-library "libsimavr.so")
 
 ;; We have to manually keep track of pin changes. Although simavr internally
 ;; does record the states of all the pins, in registers, there's no consistent
