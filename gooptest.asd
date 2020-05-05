@@ -14,3 +14,17 @@
                (:file "src/gooptest-avr")
                (:file "src/gooptest-arduino-avr")
                ))
+
+(asdf:defsystem #:gooptest/examples
+  :description "Examples for a microcontroller testing framework."
+  :author "Mark Polyakov"
+  :license "GPL-3.0"
+  :version "0.0.1"
+  :serial t
+  :depends-on (#:gooptest)
+  :pathname "examples"
+  :components ((:file "example-setu")
+
+               (:static-file "blink/blink.ino")
+               (:file "blink")
+               ))

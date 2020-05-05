@@ -17,11 +17,10 @@
        (intify c4))))
 
 (defmethod core-pin ((instance avr-core) p)
-  "Pin should be something like :a4 for port A, pin 4"
-  (check-type p keyword)
+  "Pin should be a string designator like :a4 for port A, pin 4"
   (with-alloc (ioport-state 'avr-ioport-state-t)
     (let* ((port-char (elt (string-upcase p) 0))
-           (pin-num (parse-integer (symbol-name p) :start 1))
+           (pin-num (parse-integer (string p) :start 1))
            (ioctl-res
             (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
                        ioport-state))
@@ -41,14 +40,14 @@
   (let ((firmware-namestring (namestring (truename firmware-path)))
         (mcu-name (string-downcase mcu))
         )
-    (unless port-names
-      ;; TODO: proper error/condition
-      (error "Unknown mcu name"))
 
     (setf (get-ptr instance) (avr-make-mcu-by-name mcu-name))
+    (when (cffi:null-pointer-p (ptr (get-ptr instance)))
+      (error "Unknown mcu"))
     (avr-init (get-ptr instance))
     (with-alloc (firmware 'elf-firmware-t)
-      (elf-read-firmware firmware-namestring firmware)
+      (unless (zerop (elf-read-firmware firmware-namestring firmware))
+        (error "Malformatted firmware"))
       (avr-load-firmware (get-ptr instance) firmware))
 
     ;; TODO

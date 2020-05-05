@@ -196,17 +196,50 @@ be used to improve performance by specifying how many cycles to let pass
 between polling the pin.
 
 Respects *core*"
-  (resolve-timespecs (timespec poll-timespec)
+  (resolve-timespecs (timespec)
     ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
     ;; before timespec? Or after? Does it always run exactly timespec cycles?)
     (loop
        with positive-samples = 0
        for total-samples from 1
-       and elapsed from 0 to timespec by poll-timespec
        ;; use ecase to throw errors on non-digital values.
        when (ecase (pin p)
               (:high t)
               (:low nil))
        do (incf positive-samples)
        do (cycles poll-timespec)
+       while (eq (check-timespec timespec) :future)
        finally (return (/ positive-samples total-samples)))))
+
+;;; TEST UTILITIES
+
+(defmacro runsuite ((&key setup core-setup teardown name) &body body)
+  "Create a Gooptest suite. A suite is a collection of related tests. Setup and
+  teardown are run before and after every test in the lexical environment of the
+  body of defsuite. Core-setup is run after setup and its result is dynamically
+  bound to *core* before every test, for convenience."
+  `(let ((suite-name (or ,name "unnamed-suite")))
+     ;; These symbols are in the gooptest package, so no need to fear!
+     (flet ((suite-setup () ,setup)
+            (suite-core-setup () ,setup)
+            (suite-teardown () ,teardown))
+       ,@body)))
+
+(defmacro runtest (name &body body)
+  "Run a test, respecting the current suite and catching any errors. Name is
+  optional, like the documentation in a defun; it is part of the body if it is
+  not a compile-time string."
+  (unless (stringp name)
+    (setq name "unnamed-test"
+          ;; if both name and body are nil, body shoud not be '(nil . nil)
+          body (when (or name body) (cons name body))))
+  `(if suite-name
+       (progn
+         (suite-setup)
+         (let ((*core* (suite-core-setup)))
+           ,@body)
+         (suite-teardown))
+       (progn ,@body)))
+
+(defun assert-pin (state pin-sym)
+  (assert (eq state (pin pin-sym))))

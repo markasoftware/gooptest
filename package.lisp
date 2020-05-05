@@ -62,7 +62,3 @@
            ;; non-functions
            #:arduino-uno-core           ; class
            ))
-
-(defpackage #:gooptest-examples
-  (:use #:cl #:gooptest #:gooptest-avr #:gooptest-arduino-avr)
-  (:export #:blink))

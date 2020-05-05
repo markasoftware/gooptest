@@ -2,19 +2,19 @@
 
 (defun blink ()
   "Test that a blinking LED on the Arduino UNO actually blinks."
+  ;; light starts off, turns on after .5s, then turns off after .5s, etc.
 
-  (with-core (make-arduino-uno)
+  (runsuite (:name "Blink Tests"
+             :core-setup (make-arduino-uno (find-sketch "blink")))
 
-    (test "Light starts in the off state."
+    (runtest "Light starts in the off state."
      ;; Wait 10,000 CPU cycles.
      (cycles 10000)
-     (assert (not (pin :d13)))
-     (assert (eq (pin-mode :d13) :output)))
+     (assert (eq :low (pin 13))))
     
-    (test "Light blinks"
+    (runtest "Light blinks"
      ;; The loop below expects to be started with 400 ms (nominal) until the
-     ;; next blink. This could have been written: (cycles (time-cycles 100
-     ;; :milli-second))
+     ;; next blink.
      (cycles 100 :ms)
 
      ;; Test 10 blinks on and off
@@ -28,10 +28,10 @@
         (cycles-between (:start (390 :ms)
                          :stop (410 :ms)
                          :finally (500 :ms))
-         (pin :d13)))
+         (eq :high (pin 13))))
 
        (assert
         (cycles-between (:start (390 :ms)
                          :stop (410 :ms)
                          :finally (500 :ms))
-         (not (pin :d13))))))))
+         (eq :low (pin 13))))))))
