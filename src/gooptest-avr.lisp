@@ -63,4 +63,64 @@
     ;; Also, throw errors when frequency is not present (from gooptest core).
     ))
 
+;;;; ARDUINO
 
+(defclass arduino-uno-core (avr-core)
+  ())
+
+(defmethod core-pin ((core arduino-uno-core) p)
+  (let* ((uno-pins '(0 :d0
+                     1 :d1
+                     2 :d2
+                     3 :d3
+                     4 :d4
+                     5 :d5
+                     6 :d6
+                     7 :d7
+                     8 :b0
+                     9 :b1
+                     10 :b2
+                     11 :b3
+                     12 :b4
+                     13 :b5
+                     :a0 :c0
+                     :a1 :c1
+                     :a2 :c2
+                     :a3 :c3
+                     :a4 :c4
+                     :a5 :c5))
+         (translated-pin (or (getf uno-pins p) p)))
+    (call-next-method core translated-pin)))
+
+(defun make-arduino-uno (firmware-path &optional (firmware-type :sketch))
+  (declare ((or pathname string) firmware-path))
+  (let ((firmware-truename (truename firmware-path)))
+    (ecase firmware-type
+      ;; path to a sketch directory
+      (:sketch
+       ;; TODO: some Make-like trickery to avoid recompilations.
+       (handler-case
+           (uiop:run-program (list "arduino-cli" "compile" "-b" "arduino:avr:uno"
+                                   (directory-namestring firmware-truename)))
+         (uiop:subprocess-error (c)
+           (if (= 127 (uiop:subprocess-error-code c))
+               (error "arduino-cli is required to compile Arduino sketches.")
+               ;; re-throw unknown errors; probably compilation problems
+               (error c))))
+       
+       (setq firmware-truename
+             (truename
+              (merge-pathnames
+               (format nil "~A~A.arduino.avr.uno.elf"
+                       firmware-truename
+                       (lastcar (pathname-directory firmware-truename)))
+               firmware-truename))))
+      ;; an elf file; just pass it on
+      (:elf))
+
+    (make-instance 'arduino-uno-core
+                   :firmware-path firmware-truename
+                   :frequency 16000000
+                   :mcu :atmega328p)))
+
+(setf (fdefinition 'make-arduino-nano) #'make-arduino-uno)

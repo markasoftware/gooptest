@@ -6,15 +6,13 @@
   (:export #:with-core
            #:cycles
            #:cycles-between
-           #:time-cycles
+           #:until-pin
+           #:pin-duty-cycle
            #:pin
            #:set-pin
 
-           #:make-pin
-           #:pin-output
-           #:pin-digital-input
-           #:pin-analog-input
-           ;; We already exported the pin symbol, which names the structure.
+           #:runsuite
+           #:runtest
 
            ;; Useful core functions
            #:core-elapsed
@@ -52,13 +50,7 @@
 
            ;; non-functions
            #:avr-core                   ; class
-           ))
 
-(defpackage #:gooptest-arduino-avr
-  (:nicknames #:goopduino)
-  (:use #:cl #:gooptest #:gooptest-avr)
-  (:export #:make-arduino-uno
-
-           ;; non-functions
-           #:arduino-uno-core           ; class
+           #:make-arduino-uno
+           #:make-arduino-nano
            ))

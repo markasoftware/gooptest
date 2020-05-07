@@ -159,7 +159,6 @@ want).
 :start, :stop, :skip, and :finally are timespecs.
 
 Respects *core*."
-  (assert (>= stop start))
   (once-only (start stop finally skip)
     `(resolve-timespecs (,start ,stop ,finally) (,skip)
        (assert *core*)
@@ -208,7 +207,9 @@ bound to *core* before every test, for convenience."
      (flet ((suite-setup () ,setup)
             (suite-core-setup () ,core-setup)
             (suite-teardown () ,teardown))
-       ,@body)))
+       (format t "SUITE ~A BEGIN~%" suite-name)
+       ,@body
+       (format t "SUITE ~A END~%" suite-name))))
 
 (defmacro runtest (name &body body)
   "Run a test, respecting the current suite and catching any errors. Name is
@@ -222,9 +223,14 @@ a compile-time string."
        (progn
          (suite-setup)
          (with-core (suite-core-setup)
-           ,@body)
+           (format t "    ~A RUN..." ,name)
+           ,@body
+           (format t "PASS~%"))
          (suite-teardown))
-       (progn ,@body)))
+       (progn
+         (format t "~A RUN..." ,name)
+         ,@body
+         (format t "PASS~%"))))
 
 (defun assert-pin (state pin-sym)
   (assert (eq state (pin pin-sym))))

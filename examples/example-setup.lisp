@@ -1,10 +1,10 @@
 (defpackage #:gooptest/examples
-  (:use #:cl #:gooptest #:gooptest-avr #:gooptest-arduino-avr)
+  (:use #:cl #:gooptest #:gooptest-avr)
   (:export #:blink))
 
 (in-package #:gooptest/examples)
 
-(defun sketch-pathname (sketch)
+(defun find-sketch (sketch)
   "Example utility. Returns a pathname to the named arduino sketch's directory.
 The argument should be a string designator for the dirname of the sketch
 directory, the sketch must be registered in asdf."
@@ -16,5 +16,5 @@ directory, the sketch must be registered in asdf."
     (directory-namestring
      (asdf:component-pathname
       (asdf:find-component
-       '#:gooptest-examples
+       '#:gooptest/examples
        (concatenate 'string sketch-name "/" sketch-name ".ino"))))))

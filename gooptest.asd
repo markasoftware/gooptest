@@ -23,7 +23,7 @@
   :serial t
   :depends-on (#:gooptest)
   :pathname "examples"
-  :components ((:file "example-setu")
+  :components ((:file "example-setup")
 
                (:static-file "blink/blink.ino")
                (:file "blink")
