@@ -11,8 +11,12 @@
      ;; Wait 100 CPU cycles.
      (cycles 1000)
      (assert (eq :low (pin 13))))
+
+    (gooptest:runtest "Light turns on after a little while."
+      (cycles 510 :ms)
+      (assert (eq :high (pin 13))))
     
-    (gooptest:runtest "Light blinks"
+    (gooptest:runtest "Light blinks."
      ;; The loop below expects to be started with 400 ms (nominal) until the
      ;; next blink.
      (cycles 100 :ms)

@@ -12,21 +12,19 @@
               :initform (error "Core frequency is required"))))
 
 (defgeneric core-one-cycle (c)
-  (:documentation "Step forward one cycle. Call the supermethod to increment
-  elapsed."))
+  (:documentation "Step forward the minimum number of cycles. Make sure to
+increment core-elapsed appropriately! Some simulators rarely do a true single
+cycle, and instead batch together multi-cycle instructions that can be executed
+very quickly on desktop (eg, 32-bit operations on an 8-bit microcontroller)."))
 
-(defmethod core-one-cycle ((c core))
-  (incf (core-elapsed c)))
-
-;; TODO: evaluate whether we really need this method
+;; TODO: Override this method using run_cycle_count and run_cycle_limit for
+;; simavr
 (defgeneric core-many-cycles (c n)
-  (:documentation "Step forward n cycles. When stepping forward many cycles,
-  it's faster to implement the loop in C rather than Lisp, so you may want to
-  implement this function with FFI."))
+  (:documentation "Step forward n cycles."))
 
 (defmethod core-many-cycles ((c core) n)
   (assert (not (minusp n)))
-  (dotimes (i n)
+  (do ((stop-abs (+ n (core-elapsed c)))) ((>= (core-elapsed c) stop-abs))
     (core-one-cycle c)))
 
 (defgeneric core-pin (c p)

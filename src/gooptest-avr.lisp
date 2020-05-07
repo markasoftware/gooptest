@@ -38,7 +38,8 @@
 
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
-  (call-next-method))
+  (setf (core-elapsed instance) (avr-t.cycle (get-ptr instance)))
+  )
 
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)

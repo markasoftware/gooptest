@@ -12,7 +12,6 @@
                (:static-file "src/simavr-proxy.h")
                (:file "src/gooptest-avr-cl-autowrap")
                (:file "src/gooptest-avr")
-               (:file "src/gooptest-arduino-avr")
                ))
 
 (asdf:defsystem #:gooptest/examples
