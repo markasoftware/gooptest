@@ -17,8 +17,6 @@ increment core-elapsed appropriately! Some simulators rarely do a true single
 cycle, and instead batch together multi-cycle instructions that can be executed
 very quickly on desktop (eg, 32-bit operations on an 8-bit microcontroller)."))
 
-;; TODO: Override this method using run_cycle_count and run_cycle_limit for
-;; simavr
 (defgeneric core-many-cycles (c n)
   (:documentation "Step forward n cycles."))
 

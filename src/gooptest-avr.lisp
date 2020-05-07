@@ -41,6 +41,16 @@
   (setf (core-elapsed instance) (avr-t.cycle (get-ptr instance)))
   )
 
+(defmethod core-many-cycles ((instance avr-core) n)
+  ;; probably don't need this check
+  (when (plusp n)
+    ;; It doesn't actually check the limit while running (only when it sets
+    ;; run-cycle-count internally), but it feels righter. TODO: Make sure not to
+    ;; clobber cycle timers from peripherals!
+    (setf (avr-t.run-cycle-limit (get-ptr instance)) n)
+    (setf (avr-t.run-cycle-count (get-ptr instance)) n)
+    (call-next-method)))
+
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)
   (let ((firmware-namestring (namestring (truename firmware-path)))
