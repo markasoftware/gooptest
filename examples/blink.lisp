@@ -12,11 +12,13 @@
      (cycles 1000)
      (assert (eq :low (pin 13))))
 
-    (gooptest:runtest "Light turns on after a little while."
-      (cycles 510 :ms)
+    (gooptest:runtest "Light turns from off to on at the right time"
+      (cycles 499 :ms)
+      (assert (eq :low (pin 13)))
+      (cycles 2 :ms)
       (assert (eq :high (pin 13))))
     
-    (gooptest:runtest "Light blinks."
+    (gooptest:runtest "Light blinks on and off many times."
      ;; The loop below expects to be started with 400 ms (nominal) until the
      ;; next blink.
      (cycles 100 :ms)

@@ -41,15 +41,26 @@
   (setf (core-elapsed instance) (avr-t.cycle (get-ptr instance)))
   )
 
+(cffi:defcallback cycle-timer-callback
+    :uint64 ((avr :pointer) (when :uint64) (param :pointer))
+  (declare (ignore avr when param))
+  0)
+
 (defmethod core-many-cycles ((instance avr-core) n)
-  ;; probably don't need this check
-  (when (plusp n)
-    ;; It doesn't actually check the limit while running (only when it sets
-    ;; run-cycle-count internally), but it feels righter. TODO: Make sure not to
-    ;; clobber cycle timers from peripherals!
-    (setf (avr-t.run-cycle-limit (get-ptr instance)) n)
-    (setf (avr-t.run-cycle-count (get-ptr instance)) n)
-    (call-next-method)))
+
+  (symbol-macrolet ((avr (get-ptr instance)))
+    ;; probably don't need this check
+    (when (plusp n)
+      ;; TODO: off-by-one errors, make sure we reset cycle limit appropriately
+      ;; at the end, etc.
+      (setf (avr-t.run-cycle-limit avr) n)
+      (avr-cycle-timer-register avr
+                                n
+                                (cffi:callback cycle-timer-callback)
+                                (cffi:null-pointer))
+      (call-next-method)
+      (setf (avr-t.run-cycle-limit avr) 1)
+      )))
 
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path)

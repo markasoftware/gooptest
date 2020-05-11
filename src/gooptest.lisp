@@ -6,7 +6,7 @@
   "The current core that functions like pin, cycles, etc operate on.")
 
 (defclass core ()
-  ((elapsed :initform 0 :accessor core-elapsed)
+  ((elapsed :initform 0 :accessor core-elapsed :type fixnum)
    (vcc :initform 5 :initarg :vcc :accessor core-vcc)
    (frequency :initarg :frequency :accessor core-frequency
               :initform (error "Core frequency is required"))))
@@ -21,6 +21,7 @@ very quickly on desktop (eg, 32-bit operations on an 8-bit microcontroller)."))
   (:documentation "Step forward n cycles."))
 
 (defmethod core-many-cycles ((c core) n)
+  (declare (fixnum n))
   (assert (not (minusp n)))
   (do ((stop-abs (+ n (core-elapsed c)))) ((>= (core-elapsed c) stop-abs))
     (core-one-cycle c)))
@@ -193,40 +194,36 @@ Respects *core*"
 
 ;;; TEST UTILITIES
 
-(defmacro runsuite ((&key setup core-setup teardown name) &body body)
+(defmacro runsuite ((&key setup (core-setup *core*) teardown name) &body body)
   "Create a Gooptest suite. A suite is a collection of related tests. Setup and
 teardown are run before and after every test in the lexical environment of the
 body of defsuite. Core-setup is run after setup and its result is dynamically
 bound to *core* before every test, for convenience."
-  `(let ((suite-name (or ,name "unnamed-suite")))
-     ;; These symbols are in the gooptest package, so no need to fear!
-     (flet ((suite-setup () ,setup)
-            (suite-core-setup () ,core-setup)
-            (suite-teardown () ,teardown))
-       (format t "SUITE ~A BEGIN~%" suite-name)
-       ,@body
-       (format t "SUITE ~A END~%" suite-name))))
+  ;; These symbols are in the gooptest package, so no need to fear!
+  `(macrolet ((runtest (name &body body)
+                `(progn
+                   (format t "    ~A RUN..." ,name)
+                   ;; I thought I would take this opportunity to really learn
+                   ;; and understand double backquote syntax. But instead, I
+                   ;; just fucked around with different combinations of quotes
+                   ;; and commas until it worked. My best guess: The rightmost
+                   ;; comma belongs to the outermost backquote. This gets
+                   ;; expanded to ,'(make-arduino-uno) for example.
+                   ,',setup
+                   (with-core ,',core-setup
+                     ,@body)
+                   ,',teardown
+                   (format t "PASS~%"))))
+     (format t "SUITE ~A BEGIN~%" ,name)
+     ,@body
+     (format t "SUITE ~A END~%" ,name)))
 
 (defmacro runtest (name &body body)
-  "Run a test, respecting the current suite and catching any errors. Name is
-optional, like the documentation in a defun; it is part of the body if it is not
-a compile-time string."
-  (unless (stringp name)
-    (setq name "unnamed-test"
-          ;; if both name and body are nil, body shoud not be '(nil . nil)
-          body (when (or name body) (cons name body))))
-  `(if suite-name
-       (progn
-         (suite-setup)
-         (with-core (suite-core-setup)
-           (format t "    ~A RUN..." ,name)
-           ,@body
-           (format t "PASS~%"))
-         (suite-teardown))
-       (progn
-         (format t "~A RUN..." ,name)
-         ,@body
-         (format t "PASS~%"))))
+  "Run a test, respecting the current suite and catching any errors."
+  `(progn
+     (format t "~A RUN..." ,name)
+     ,@body
+     (format t "PASS~%")))
 
 (defun assert-pin (state pin-sym)
   (assert (eq state (pin pin-sym))))
