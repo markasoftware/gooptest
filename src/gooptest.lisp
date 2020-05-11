@@ -11,6 +11,9 @@
    (frequency :initarg :frequency :accessor core-frequency
               :initform (error "Core frequency is required"))))
 
+(setf (documentation 'core-elapsed 'function)
+      "The number of clock cycles executed.")
+
 (defgeneric core-one-cycle (c)
   (:documentation "Step forward the minimum number of cycles. Make sure to
 increment core-elapsed appropriately! Some simulators rarely do a true single
@@ -27,21 +30,27 @@ very quickly on desktop (eg, 32-bit operations on an 8-bit microcontroller)."))
     (core-one-cycle c)))
 
 (defgeneric core-pin (c p)
-  (:documentation "Return :high, :low, :pull-up, :pull-down, :float. How pins
-should be specified is more or less up to the core, depending on how the
-manufacturer refers to their pins. All pins should be symbols, and probably
-keywords."))
+  (:documentation
+   "Return the status of the given pin. The format of the argument is determined
+by the core. Respects *core*. Valid values include:
+
+:high     (set to digital high)
+:low      (set to digital low)
+:pull-up  (configured as input, with pullup resistor)
+:pull-down
+:float    (configured as input, no pullup resistor)
+
+Cores can define their own values as necessary."))
 
 (defgeneric core-set-pin-digital (c p high)
   (:documentation "Set a digital input at a pin. Pin should be in the same
-format as (core-pin). High represents a high voltage. An error may be thrown
-if the pin is in output mode, but this behavior is not guaranteed."))
+format as (pin). High should be non-nil to set to a high voltage, or nil for
+low."))
 
 (defgeneric core-set-pin-analog (c p voltage)
   (:documentation "Set an analog input voltage at a pin. Pin should be in the
-same format as (core-pin). The voltage represents the absolute voltage at the
-input. It may be useful to compare this to (core-vcc). An error may bethrown
-if the pin is in output mode, but this behavior is not guaranteed."))
+same format as (pin). The voltage represents the absolute voltage at the
+input."))
 
 (deftype pin-output ()
   "What an mcu might set a pin to"
@@ -51,27 +60,27 @@ if the pin is in output mode, but this behavior is not guaranteed."))
   `(let ((*core* ,the-core))
      ,@body))
 
-(defun pin (the-pin)
-  "Return the status of the given pin. The format of the argument is determined
-by the core. Respects *core*. Valid values include:
+(defmacro defcorewrapper (new-fun old-fun lambda-list)
+  "Creates a *core*-respecting wrapper for a CLOS method on core."
+  `(defun ,new-fun ,lambda-list
+     ,(documentation old-fun 'function)
+     (assert *core*)
+     (,old-fun *core* ,@lambda-list)))
 
-:high     (set to digital high)
-:low      (set to digital low)
-:pull-up  (configured as input, with pullup resistor)
-:pull-down
-:float    (configured as input, no pullup resistor)
+(defcorewrapper pin core-pin (pin-designator))
+(defcorewrapper set-pin-digital core-set-pin-digital (pin-designator high))
+(defcorewrapper set-pin-analog core-set-pin-analog (pin-designator voltage))
+(defcorewrapper elapsed core-elapsed ())
 
-Cores can define their own values as necessary.
-
-Respects *core*."
-  (assert *core*)
-  (core-pin *core* the-pin))
-
-(defun elapsed ()
-  "Returns the number of elapsed CPU cycles.
-
-Respects *core*."
-  (core-elapsed *core*))
+(defsetf pin (p) (new-state)
+  "Set the pin to a certain state. If new-state is a number, set to that
+voltage (analog). If new-state is nil or :low, set to digital low. If new-state
+is any other non-nil value (:high recommended), set to digital high. Setting the
+digital state will not change the analog state, and vice versa."
+  `(cond
+     ((numberp ,new-state) (set-pin-analog ,p ,new-state))
+     ((or (not ,new-state) (eq :low ,new-state)) (set-pin-digital ,p nil))
+     (t (set-pin-digital ,p t))))
 
 ;; A "timespec" is a list with up to one to three elements, or a single number.
 ;; The first is the number of time units. The second is the time unit. The third

@@ -26,4 +26,7 @@
 
                (:static-file "blink/blink.ino")
                (:file "blink")
+
+               (:static-file "at-least-two/at-least-two.ino")
+               (:file "at-least-two")
                ))

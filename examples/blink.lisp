@@ -4,21 +4,21 @@
   "Test that a blinking LED on the Arduino UNO actually blinks."
   ;; light starts off, turns on after .5s, then turns off after .5s, etc.
 
-  (gooptest:runsuite (:name "Blink Tests"
-                      :core-setup (make-arduino-uno (find-sketch "blink")))
+  (runsuite (:name "Blink Tests"
+             :core-setup (make-arduino-uno (find-sketch "blink")))
 
-    (gooptest:runtest "Light starts in the off state."
+    (runtest "Light starts in the off state."
      ;; Wait 100 CPU cycles.
      (cycles 1000)
      (assert (eq :low (pin 13))))
 
-    (gooptest:runtest "Light turns from off to on at the right time"
+    (runtest "Light turns from off to on at the right time"
       (cycles 499 :ms)
       (assert (eq :low (pin 13)))
       (cycles 2 :ms)
       (assert (eq :high (pin 13))))
     
-    (gooptest:runtest "Light blinks on and off many times."
+    (runtest "Light blinks on and off many times."
      ;; The loop below expects to be started with 400 ms (nominal) until the
      ;; next blink.
      (cycles 100 :ms)

@@ -16,25 +16,41 @@
        (ash (intify c3) 8)
        (intify c4))))
 
+(defmacro with-pin (port-var pin-var pin-designator &body body)
+  "Bind port-var to the upper case character of the port and pin-var to the
+numerical (0-7) pin number inside that port."
+  (once-only (pin-designator)
+    `(let ((,port-var (elt (string-upcase ,pin-designator) 0))
+           (,pin-var (parse-integer (string ,pin-designator) :start 1)))
+       ,@body)))
+
 (defmethod core-pin ((instance avr-core) p)
   "Pin should be a string designator like :a4 for port A, pin 4"
   (with-alloc (ioport-state 'avr-ioport-state-t)
-    (let* ((port-char (elt (string-upcase p) 0))
-           (pin-num (parse-integer (string p) :start 1))
-           (ioctl-res
-            (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
-                       ioport-state))
-           ;; TODO: NOT THIS NOT THIS NOT THIS FILE AN AUTOWRAP BUG
-           (ioport-state-long (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
-           (ddr (mod (ash ioport-state-long -15) 256))
-           (port (mod (ash ioport-state-long -7) 256))
-           (is-output (plusp (logand (ash 1 pin-num) ddr)))
-           (is-high (plusp (logand (ash 1 pin-num) port))))
+    (with-pin port-char pin-num p
+      (let* ((ioctl-res
+              (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
+                         ioport-state))
+             ;; TODO: NOT THIS NOT THIS NOT THIS FILE AN AUTOWRAP BUG
+             (ioport-state-long (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
+             (ddr (mod (ash ioport-state-long -15) 256))
+             (port (mod (ash ioport-state-long -7) 256))
+             (is-output (plusp (logand (ash 1 pin-num) ddr)))
+             (is-high (plusp (logand (ash 1 pin-num) port))))
 
-      (unless (zerop ioctl-res)
-        (error "Error getting pin state"))
-      (if is-output (if is-high :high :low)
-          (if is-high :pull-up :float)))))
+       (unless (zerop ioctl-res)
+         (error "Error getting pin state"))
+       (if is-output (if is-high :high :low)
+           (if is-high :pull-up :float))))))
+
+(defmethod core-set-pin-digital ((instance avr-core) p high)
+  ;; unconditionally dispatch an IRQ. TODO: improve performance by caching the
+  ;; IRQ object per port?
+  (with-pin port-char pin-num p
+    (avr-raise-irq (avr-io-getirq (get-ptr instance)
+                                  (avr-ioctl-def #\i #\o #\g port-char)
+                                  pin-num)
+                   (if high 1 0))))
 
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
@@ -90,29 +106,36 @@
 (defclass arduino-uno-core (avr-core)
   ())
 
-(defmethod core-pin ((core arduino-uno-core) p)
-  (let* ((uno-pins '(0 :d0
-                     1 :d1
-                     2 :d2
-                     3 :d3
-                     4 :d4
-                     5 :d5
-                     6 :d6
-                     7 :d7
-                     8 :b0
-                     9 :b1
-                     10 :b2
-                     11 :b3
-                     12 :b4
-                     13 :b5
-                     :a0 :c0
-                     :a1 :c1
-                     :a2 :c2
-                     :a3 :c3
-                     :a4 :c4
-                     :a5 :c5))
-         (translated-pin (or (getf uno-pins p) p)))
-    (call-next-method core translated-pin)))
+(defun translate-pin-uno (arduino-pin)
+  (or (getf '(0 :d0
+              1 :d1
+              2 :d2
+              3 :d3
+              4 :d4
+              5 :d5
+              6 :d6
+              7 :d7
+              8 :b0
+              9 :b1
+              10 :b2
+              11 :b3
+              12 :b4
+              13 :b5
+              :a0 :c0
+              :a1 :c1
+              :a2 :c2
+              :a3 :c3
+              :a4 :c4
+              :a5 :c5) arduino-pin) arduino-pin))
+
+(defmethod core-pin ((instance arduino-uno-core) p)
+  (call-next-method instance (translate-pin-uno p)))
+
+(defmethod core-set-pin-digital ((instance arduino-uno-core) p high)
+  (call-next-method instance (translate-pin-uno p) high))
+
+(defmethod core-set-pin-analog ((instance arduino-uno-core) p voltage)
+  (call-next-method instance (translate-pin-uno p) voltage))
 
 (defun make-arduino-uno (firmware-path &optional (firmware-type :sketch))
   (declare ((or pathname string) firmware-path))

@@ -9,7 +9,7 @@
            #:until-pin
            #:pin-duty-cycle
            #:pin
-           #:set-pin
+           #:assert-pin
 
            #:runsuite
            #:runtest
@@ -23,7 +23,8 @@
            #:core-many-cycles
            #:core-frequency
            #:core-pin
-           #:core-set-pin
+           #:core-set-pin-digital
+           #:core-set-pin-analog
            #:core-reset
 
            ;; non-functions
