@@ -5,6 +5,7 @@
 
 (defclass avr-core (core)
   ((avr-ptr :accessor get-ptr :type avr-t)
+   (mcu-name :accessor get-mcu-name :type keyword)
    ))
 
 (defun avr-ioctl-def (c1 c2 c3 c4)
@@ -52,6 +53,29 @@ numerical (0-7) pin number inside that port."
                                   pin-num)
                    (if high 1 0))))
 
+;; There's no logical connection between ports/pins and their ADC channels
+(defparameter *adc-pin-plist*
+  '(:atmega328 #1=(:c0 0 :c1 1 :c2 2 :c3 3 :c4 4 :c5 5)
+    :atmega328p #1#
+    ))
+
+(defmethod core-set-pin-analog ((instance avr-core) p voltage)
+  ;; For analog only, the pin may be, for example, :adc3 to indicate the adc
+  ;; channel instead of the pin. There is no logical connection between pins and
+  ;; adc channels in simavr.
+  (let ((adc-channel
+         (if (starts-with-subseq "ADC" (string-upcase p))
+             (parse-integer (string p) :start 3)
+             (getf (getf *adc-pin-plist* (get-mcu-name instance))
+                   (intern (string-upcase p) :keyword)))))
+
+    (assert adc-channel)
+    (avr-raise-irq (avr-io-getirq (get-ptr instance)
+                                  (avr-ioctl-def #\a #\d #\c #\ )
+                                  adc-channel)
+                   (floor (* 1000 voltage)))))
+  
+
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
   (setf (core-elapsed instance) (avr-t.cycle (get-ptr instance)))
@@ -79,10 +103,12 @@ numerical (0-7) pin number inside that port."
       )))
 
 (defmethod initialize-instance :after
-    ((instance avr-core) &key mcu firmware-path)
+    ((instance avr-core) &key mcu firmware-path frequency vcc)
   (let ((firmware-namestring (namestring (truename firmware-path)))
         (mcu-name (string-downcase mcu))
         )
+
+    (setf (get-mcu-name instance) (intern (string-upcase mcu) :keyword))
 
     (setf (get-ptr instance) (avr-make-mcu-by-name mcu-name))
     (when (cffi:null-pointer-p (ptr (get-ptr instance)))
@@ -92,6 +118,12 @@ numerical (0-7) pin number inside that port."
       (unless (zerop (elf-read-firmware firmware-namestring firmware))
         (error "Malformatted firmware"))
       (avr-load-firmware (get-ptr instance) firmware))
+
+    (when frequency
+      (setf (avr-t.frequency (get-ptr instance)) frequency))
+
+    (when vcc
+      (setf (avr-t.vcc (get-ptr instance)) vcc))
 
     ;; TODO
     ;; (trivial-garbage:finalize instance (lambda ()
