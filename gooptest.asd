@@ -29,4 +29,7 @@
 
                (:static-file "at-least-two/at-least-two.ino")
                (:file "at-least-two")
+
+               (:static-file "analog-to-pwm/analog-to-pwm.ino")
+               (:file "analog-to-pwm")
                ))
