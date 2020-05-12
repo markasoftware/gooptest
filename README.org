@@ -1,0 +1,72 @@
+* Gooptest
+** Motivating Example
+   Adapted from [[file:examples/blink.lisp][examples/blink.lisp]]:
+
+   #+BEGIN_SRC lisp
+     (runsuite (:name "Blink Tests"
+                :core-setup (make-arduino-uno (find-sketch "blink")))
+
+       (runtest "Light starts in the off state."
+        (cycles 1000)                        ; Sleep for 1000 CPU cycles
+        (assert-pin :low 13))                ; Assert than pin 13 is low
+
+       (runtest "Light turns from off to on at the right time"
+         (cycles 499 :ms)                    ; Sleep for 499 milliseconds
+         (assert-pin :low 13)
+         (cycles 2 :ms)
+         (assert-pin :high 13))
+
+       (runtest "Light blinks on and off many times."
+        ;; The loop below expects to be started with 400 ms (nominal) until the
+        ;; next blink.
+        (cycles 100 :ms)
+
+        ;; Test 10 blinks on and off
+        (dotimes (i 10)
+
+          (assert
+           (cycles-between (:start '(390 :ms) ; Start checking 390ms from now
+                            :stop '(410 :ms)  ; Stop checking 410ms from now
+                            :finally '(500 :ms) ; Return after 500ms from now, to
+                                                ; exit in a consistent state.
+                            :skip '(1 :ms))   ; Poll the pin every millisecond
+             (eq :high (pin 13))))            ; Ensure that this condition passes
+                                              ; some time during the interval.
+
+          ;; Realistically, you could test a blinker pretty well just using
+          ;; (cycles), without the fancy (cycles-between).
+
+          (assert
+           (cycles-between (:start '(390 :ms)
+                            :stop '(410 :ms)
+                            :finally '(500 :ms)
+                            :skip '(1 :ms))
+             (eq :low (pin 13))))))))
+   #+END_SRC
+
+** Setup
+*** Dependencies
+    To emulate AVR cores, you need to install [[https://github.com/BusError/simavr][simavr]]. On Debian and derivatives
+    (that's you, Ubuntu!), simavr is packaged, so run ~sudo apt install
+    libsimavr~ (you do /not/ need development headers). Elsewhere, download,
+    compile, and install simavr from the link above.
+    
+    To compile Arduino sketches, you'll need
+    [[https://arduino.github.io/arduino-cli/installation/][arduino-cli]].
+    Installation is pretty easy. Put it in your ~$PATH~ if you want gooptest to
+    be able to automatically compile your sketches. TODO: set a custom path to
+    arduino-cli in a variable.
+*** Gooptest itself
+    If you're familiar with Lisp and have a working development environment: Put
+    this repository into your ASDF load path, then ~(asdf:load-system
+    :gooptest)~. Examples are in the package ~gooptest/examples~. You might need
+    to install dependencies via quicklisp.
+** Documentation
+   Most public functions in gooptest have meaningful documentation strings. See
+   [[file:package.lisp][package.lisp]] for a list of exported symbols, then use
+   your editor's documentation features for more details.
+
+   The [[file:examples][examples]] are a more digestible overview of gooptest.
+   Running the examples should be as simple as ~(asdf:load-system
+   :gooptest/examples)~ followed by, for example, ~(gooptest/examples:blink)~ to
+   run the blink example.

@@ -10,13 +10,13 @@
     (runtest "Light starts in the off state."
      ;; Wait 100 CPU cycles.
      (cycles 1000)
-     (assert (eq :low (pin 13))))
+     (assert-pin :low 13))
 
     (runtest "Light turns from off to on at the right time"
       (cycles 499 :ms)
-      (assert (eq :low (pin 13)))
+      (assert-pin :low 13)
       (cycles 2 :ms)
-      (assert (eq :high (pin 13))))
+      (assert-pin :high 13))
     
     (runtest "Light blinks on and off many times."
      ;; The loop below expects to be started with 400 ms (nominal) until the
@@ -25,8 +25,6 @@
 
      ;; Test 10 blinks on and off
      (dotimes (i 10)
-
-       ;; (format t "loop ~A~%" i)
 
        ;; The pin turns off between .39 and .41 seconds later The assertion will
        ;; fail if it turns on before .39 or is still off at .41. Regardless of
