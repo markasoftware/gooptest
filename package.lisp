@@ -9,6 +9,8 @@
            #:until-pin
            #:pin-duty-cycle
            #:pin
+           #:set-pin-digital
+           #:set-pin-analog
            #:assert-pin
 
            #:runsuite
@@ -16,33 +18,26 @@
 
            ;; Useful core functions
            #:core-elapsed
-           #:core-inc-elapsed
            #:core-vcc
+           #:core-frequency
            ;; Generic core functions (should be implemented by cores)
            #:core-one-cycle
            #:core-many-cycles
-           #:core-frequency
            #:core-pin
            #:core-set-pin-digital
            #:core-set-pin-analog
-           #:core-reset
 
            ;; non-functions
            #:core                       ; class
            #:*core*                     ; context variable
+           #:pin-output                 ; type
            ))
 
 (defpackage #:gooptest-avr-cl-autowrap
-  (:use #:cl #:autowrap)
-  (:export #:avr-t
-           #:avr-t.frequency
-           #:avr-make-mcu-by-name
-           #:avr-init
-           #:elf-firmware-t
-           #:avr-load-firmware
-
-           #:avr-register-notify-hook
-           ))
+  (:use #:cl #:autowrap))
+;; (c-include) exports everything, for better or (probably) for worse. TODO:
+;; look into that, and removing some of the symbols we don't need in the first
+;; place.
 
 (defpackage #:gooptest-avr
   (:nicknames #:goop-avr)

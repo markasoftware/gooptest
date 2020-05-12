@@ -169,29 +169,43 @@ numerical (0-7) pin number inside that port."
 (defmethod core-set-pin-analog ((instance arduino-uno-core) p voltage)
   (call-next-method instance (translate-pin-uno p) voltage))
 
+(defun maybe-compile-sketch (sketch-truename model)
+  (let* ((sketch-name-only (lastcar (pathname-directory sketch-truename)))
+         (.ino-truename
+          (cond
+            ((uiop:directory-exists-p sketch-truename)
+             (format nil "~A~A.ino" sketch-truename sketch-name-only))
+            ((uiop:file-exists-p sketch-truename)
+             sketch-truename)
+            ;; TODO: restart and prompt for new sketchname
+            (t (error "Sketch not found"))))
+         (.elf-truename
+          (format nil "~A.arduino.avr.~A.elf" .ino-truename model))
+         (.ino-mtime (osicat-posix:stat-mtime
+                      (osicat-posix:stat .ino-truename)))
+         (.elf-mtime (or
+                      (and (probe-file .elf-truename)
+                           (osicat-posix:stat-mtime
+                            (osicat-posix:stat .elf-truename)))
+                      0)))
+    (when (< .elf-mtime .ino-mtime)
+       (handler-case
+           (uiop:run-program
+            (list "arduino-cli" "compile" "-b" "arduino:avr:uno" .ino-truename))
+         (uiop:subprocess-error (c)
+           (if (= 127 (uiop:subprocess-error-code c))
+               (error "arduino-cli is required to compile Arduino sketches.")
+               ;; re-throw unknown errors; probably compilation problems
+               (error c)))))
+    .elf-truename))
+
 (defun make-arduino-uno (firmware-path &optional (firmware-type :sketch))
   (declare ((or pathname string) firmware-path))
   (let ((firmware-truename (truename firmware-path)))
     (ecase firmware-type
       ;; path to a sketch directory
       (:sketch
-       ;; TODO: some Make-like trickery to avoid recompilations.
-       (handler-case
-           (uiop:run-program (list "arduino-cli" "compile" "-b" "arduino:avr:uno"
-                                   (directory-namestring firmware-truename)))
-         (uiop:subprocess-error (c)
-           (if (= 127 (uiop:subprocess-error-code c))
-               (error "arduino-cli is required to compile Arduino sketches.")
-               ;; re-throw unknown errors; probably compilation problems
-               (error c))))
-       
-       (setq firmware-truename
-             (truename
-              (merge-pathnames
-               (format nil "~A~A.arduino.avr.uno.elf"
-                       firmware-truename
-                       (lastcar (pathname-directory firmware-truename)))
-               firmware-truename))))
+       (setq firmware-truename (maybe-compile-sketch firmware-path "uno")))
       ;; an elf file; just pass it on
       (:elf))
 
