@@ -77,10 +77,12 @@ input."))
 voltage (analog). If new-state is nil or :low, set to digital low. If new-state
 is any other non-nil value (:high recommended), set to digital high. Setting the
 digital state will not change the analog state, and vice versa."
-  `(cond
-     ((numberp ,new-state) (set-pin-analog ,p ,new-state))
-     ((or (not ,new-state) (eq :low ,new-state)) (set-pin-digital ,p nil))
-     (t (set-pin-digital ,p t))))
+  `(progn
+     (cond
+       ((numberp ,new-state) (set-pin-analog ,p ,new-state))
+       ((or (not ,new-state) (eq :low ,new-state)) (set-pin-digital ,p nil))
+       (t (set-pin-digital ,p t)))
+     ,new-state))
 
 ;; A "timespec" is a list with up to one to three elements, or a single number.
 ;; The first is the number of time units. The second is the time unit. The third
@@ -197,8 +199,8 @@ Respects *core*"
               (:high t)
               (:low nil))
        do (incf positive-samples)
-       do (cycles-rel skip)
        while (<= (+ (elapsed) skip) stop)
+       do (cycles-rel skip)
        finally (return (/ positive-samples total-samples)))))
 
 ;;; TEST UTILITIES
