@@ -181,12 +181,10 @@ numerical (0-7) pin number inside that port."
             (t (error "Sketch not found"))))
          (.elf-truename
           (format nil "~A.arduino.avr.~A.elf" .ino-truename model))
-         (.ino-mtime (osicat-posix:stat-mtime
-                      (osicat-posix:stat .ino-truename)))
+         (.ino-mtime (file-write-date .ino-truename))
          (.elf-mtime (or
                       (and (probe-file .elf-truename)
-                           (osicat-posix:stat-mtime
-                            (osicat-posix:stat .elf-truename)))
+                           (file-write-date .elf-truename))
                       0)))
     (when (< .elf-mtime .ino-mtime)
        (handler-case
@@ -200,10 +198,14 @@ numerical (0-7) pin number inside that port."
     .elf-truename))
 
 (defun make-arduino-uno (firmware-path &optional (firmware-type :sketch))
+  "Make an arduino uno core. It's recommended to use this instead
+of (make-instance 'arduino-uno-core). By default, expects a path to a .ino or
+sketch directory containing a .ino with the same name as the directory. Will
+compile the file using arduino-cli, so make sure it's installed!"
   (declare ((or pathname string) firmware-path))
   (let ((firmware-truename (truename firmware-path)))
     (ecase firmware-type
-      ;; path to a sketch directory
+      ;; path to a sketch directory or file
       (:sketch
        (setq firmware-truename (maybe-compile-sketch firmware-path "uno")))
       ;; an elf file; just pass it on
