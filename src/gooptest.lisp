@@ -12,8 +12,7 @@
               :initform (error "Core frequency is required")
               :type integer)
    (uart-buffers :initform nil          ; channels are added as needed
-                 :accessor core-uart-buffers
-                 :type (vector (unsigned-byte 8)))))
+                 :accessor core-uart-buffers)))
 
 (setf (documentation 'core-elapsed 'function)
       "The number of clock cycles executed.")
@@ -76,13 +75,13 @@ has been sent so far on the given channel."))
 
 (defmethod core-uart-data ((c core) &optional (uart-channel 0))
   "A useful default implementation for subclasses that use uart-buffers."
-  (elt (core-uart-buffers c) uart-channel))
+  (nth (or uart-channel 0) (core-uart-buffers c)))
 
-(defun uart-string (&optional channel)
+(defun uart-string (&optional channel (encoding :ascii))
   "Return all data sent over UART, as a string.
 
 Respects *core*"
-  (babel:octets-to-string (core-uart-data *core* channel)))
+  (babel:octets-to-string (core-uart-data *core* channel) :encoding encoding))
 
 (deftype pin-output ()
   "What an mcu might set a pin to."
@@ -215,39 +214,55 @@ Respects *core*."
               do (cycles-rel ,skip))
          (cycles-abs ,finally)))))
 
-(defun pin-duty-cycle (p stop &optional (skip 1))
-  "Returns the duty cycle of the given pin, as a fraction. Records for the
-length given by the timespec. Works for digital output pins; will throw an error
-if a pin state other than :high or :low is detected. skip-timespec can be used
-to improve performance by specifying how many cycles to let pass between polling
-the pin.
+;; (defun pin-duty-cycle (p stop &optional (skip 1))
+;;   "Returns the duty cycle of the given pin, as a fraction. Records for the
+;; length given by the timespec. Works for digital output pins; will throw an error
+;; if a pin state other than :high or :low is detected. skip-timespec can be used
+;; to improve performance by specifying how many cycles to let pass between polling
+;; the pin.
 
-Respects *core*"
-  (resolve-timespecs (stop) (skip)
-    ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
-    ;; before timespec? Or after? Does it always run exactly timespec cycles?)
-    (loop
-       with positive-samples = 0
-       for total-samples from 1
-       ;; use ecase to throw errors on non-digital values.
-       when (ecase (pin p)
-              (:high t)
-              (:low nil))
-       do (incf positive-samples)
-       while (<= (+ (elapsed) skip) stop)
-       do (cycles-rel skip)
-       finally (return (/ positive-samples total-samples)))))
+;; Respects *core*"
+;;   (resolve-timespecs (stop) (skip)
+;;     ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
+;;     ;; before timespec? Or after? Does it always run exactly timespec cycles?)
+;;     (loop
+;;        with positive-samples = 0
+;;        for total-samples from 1
+;;        ;; use ecase to throw errors on non-digital values.
+;;        when (ecase (pin p)
+;;               (:high t)
+;;               (:low nil))
+;;        do (incf positive-samples)
+;;        while (<= (+ (elapsed) skip) stop)
+;;        do (cycles-rel skip)
+;;        finally (return (/ positive-samples total-samples)))))
 
-(defun until-uart (text &key serial-port (timeout '(1 :second)) (skip 100))
+;; TODO: normalize the parameters. I think we should call start, stop, skip,
+;; finally. (i.e, rename timeout -> stop on other methods)
+(defun until-uart (text &key serial-port (stop '(1 :s)) (skip 100) (finally 0))
   "Runs until the given text is sent over the serial port. Returns non-nil if
 that text was found before the timeout. Ignores text that was already sent
-before (until-uart) was called. Will poll at intervals indicated by skip."
-  (resolve-timespecs (timeout) (skip)
-    (loop
-       with start2 = (length (uart-string serial-port))
-       while (<= (+ (elapsed) skip) timeout)
-       until (search text (uart-string serial-port) :from-end t :start2 start2)
-       do (cycles-rel skip))))
+before (until-uart) was called. Will poll at intervals indicated by skip.
+Handles strings, characters, numbers/unsigned bytes, and vectors of unsigned
+bytes as text.
+
+Respects *core*."
+  ;; TODO: do we need to store string length separately from binary length? I
+  ;; want it all to be ascii but who knows.
+  (let ((start (length (uart-data))))
+    (cycles-between (:start 0 :stop stop :skip skip :finally finally)
+      (etypecase text
+        (string (search text (uart-string serial-port)
+                        :from-end t :start2 start))
+
+        (character (position text (uart-string serial-port)
+                             :from-end t :start start))
+
+        ((unsigned-byte 8) (position text (uart-data serial-port)
+                                     :from-end t :start start))
+
+        ((vector (unsigned-byte 8)) (search text (uart-data serial-port)
+                                            :from-end t :start2 start))))))
 
 ;;; TEST UTILITIES
 

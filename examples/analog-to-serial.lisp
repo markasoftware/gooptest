@@ -10,7 +10,7 @@
     (runtest "Sends Hello World on boot"
       (assert
        (until-uart "Hello World!"
-                   :timeout '(75 :milliseconds)
+                   :stop '(75 :milliseconds)
                    ;; poll once per millisecond
                    :skip '(1 :millisecond))))
 
@@ -26,8 +26,8 @@
       ;; until-uart accepts strings, characters, unsigned byte vectors, and
       ;; unsigned bytes!
       (assert
-       (until-uart (ash (floor (* 2.5 1023)) -2)
-                   :timeout '(5 :ms)
+       (until-uart (ash (floor (* 2.5 1023) 5) -2)
+                   :stop '(5 :ms)
                    :skip '(100 :us))))
 
     (runtest "Sends multiple bytes"
@@ -36,13 +36,13 @@
       (setf (pin :a0) 2.5)
       (assert
        (until-uart (ash (floor (* 2.5 1023) 5) -2)
-                   :timeout '(5 :ms)
+                   :stop '(5 :ms)
                    :skip '(100 :us)))
 
       (setf (pin :a0) 1.0)
       (assert
-       (until-uart (ash 1023 -2)
-                   :timeout '(5 :ms)
+       (until-uart (ash (floor 1023 5) -2)
+                   :stop '(5 :ms)
                    :skip '(100 :us))))
 
     ))

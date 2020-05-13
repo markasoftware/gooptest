@@ -4,7 +4,7 @@ int old_analog;
 
 void setup() {
 	old_analog = 0;
-	Serial.begin(9600);
+	Serial.begin(38400);
 	// just to test things out
 	delay(50);
 	Serial.print("Hello World!");

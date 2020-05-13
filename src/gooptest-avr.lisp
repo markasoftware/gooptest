@@ -75,15 +75,17 @@ numerical (0-7) pin number inside that port."
                                   adc-channel)
                    (floor (* 1000 voltage)))))
 
-(defmethod core-start-uart ((instance avr-core) &optional (channel-int 0))
-  (declare (integer channel-int))
+(defmethod core-uart-start ((instance avr-core) &optional (channel-int 0))
+  ;(declare ((or integer nil) channel-int))
+  ;; TODO: can we do the optional stuff more reliably?
+  (setf channel-int (or channel-int 0))
   (assert (<= 0 channel-int 9))
   ;; don't do anything if it's already started
   (symbol-macrolet ((uart-buffer
                      (nth channel-int (core-uart-buffers instance))))
     (unless uart-buffer
       (setf uart-buffer (make-array 0
-                                    :element-type '(vector (unsigned-byte 8))
+                                    :element-type '(unsigned-byte 8)
                                     :adjustable t
                                     :fill-pointer t))
       (let ((callback-name (gensym))
@@ -139,6 +141,7 @@ numerical (0-7) pin number inside that port."
         )
 
     (setf (get-mcu-name instance) (intern (string-upcase mcu) :keyword))
+    (setf (core-uart-buffers instance) (loop for i from 0 to 9 collect nil))
 
     (setf (get-ptr instance) (avr-make-mcu-by-name mcu-name))
     (when (cffi:null-pointer-p (ptr (get-ptr instance)))
@@ -151,7 +154,9 @@ numerical (0-7) pin number inside that port."
 
     (setf (avr-t.frequency (get-ptr instance)) frequency)
     (when vcc
-      (setf (avr-t.vcc (get-ptr instance)) vcc))
+      (setf (avr-t.vcc (get-ptr instance)) (floor (* 1000 vcc)))
+      (setf (avr-t.avcc (get-ptr instance)) (floor (* 1000 vcc)))
+      )
 
     ;; TODO
     ;; (trivial-garbage:finalize instance (lambda ()
