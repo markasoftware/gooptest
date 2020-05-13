@@ -5,7 +5,7 @@
   ;; light starts off, turns on after .5s, then turns off after .5s, etc.
 
   (runsuite (:name "Blink Tests"
-             :core-setup (make-arduino-uno (find-sketch "blink")))
+             :core (make-arduino-uno (find-sketch "blink")))
 
     (runtest "Light starts in the off state."
      ;; Wait 100 CPU cycles.

@@ -6,10 +6,14 @@
   "The current core that functions like pin, cycles, etc operate on.")
 
 (defclass core ()
-  ((elapsed :initform 0 :accessor core-elapsed :type fixnum)
-   (vcc :initform 5 :initarg :vcc :accessor core-vcc)
+  ((elapsed :initform 0 :accessor core-elapsed :type integer)
+   (vcc :initform 5 :initarg :vcc :accessor core-vcc :type number)
    (frequency :initarg :frequency :accessor core-frequency
-              :initform (error "Core frequency is required"))))
+              :initform (error "Core frequency is required")
+              :type integer)
+   (uart-buffers :initform nil          ; channels are added as needed
+                 :accessor core-uart-buffers
+                 :type (vector (unsigned-byte 8)))))
 
 (setf (documentation 'core-elapsed 'function)
       "The number of clock cycles executed.")
@@ -52,8 +56,36 @@ low."))
 same format as (pin). The voltage represents the absolute voltage at the
 input."))
 
+(defgeneric core-uart-start (c &optional uart-channel)
+  (:documentation "Start listening and recording uart data on the given
+channel (or some reasonable default). It is valid for a core to listen to uart
+passively, without this function being called. uart-channel = nil is equivalet
+to the default, even if it's provided."))
+
+(defgeneric core-uart-stop (c &optional uart-channel)
+  (:documentation "May not do anything. You do /not/ need to call this before
+throwing away a core."))
+
+(defmethod core-uart-stop ((c core) &optional uart-channel)
+  "Noop. Override if you care."
+  (declare (ignore uart-channel)))
+
+(defgeneric core-uart-data (c &optional uart-channel)
+  (:documentation "Retrieve, as a vector of unsigned bytes, all uart data that
+has been sent so far on the given channel."))
+
+(defmethod core-uart-data ((c core) &optional (uart-channel 0))
+  "A useful default implementation for subclasses that use uart-buffers."
+  (elt (core-uart-buffers c) uart-channel))
+
+(defun uart-string (&optional channel)
+  "Return all data sent over UART, as a string.
+
+Respects *core*"
+  (babel:octets-to-string (core-uart-data *core* channel)))
+
 (deftype pin-output ()
-  "What an mcu might set a pin to"
+  "What an mcu might set a pin to."
   '(member :float :high :low :pull-up :pull-down))
 
 (defmacro with-core (the-core &body body)
@@ -65,12 +97,15 @@ input."))
   `(defun ,new-fun ,lambda-list
      ,(documentation old-fun 'function)
      (assert *core*)
-     (,old-fun *core* ,@lambda-list)))
+     (,old-fun *core* ,@(remove '&optional lambda-list))))
 
 (defcorewrapper pin core-pin (pin-designator))
 (defcorewrapper set-pin-digital core-set-pin-digital (pin-designator high))
 (defcorewrapper set-pin-analog core-set-pin-analog (pin-designator voltage))
 (defcorewrapper elapsed core-elapsed ())
+(defcorewrapper uart-start core-uart-start (&optional uart-channel))
+(defcorewrapper uart-stop core-uart-stop (&optional uart-channel))
+(defcorewrapper uart-data core-uart-data (&optional uart-channel))
 
 (defsetf pin (p) (new-state)
   "Set the pin to a certain state. If new-state is a number, set to that
@@ -144,7 +179,7 @@ Respects *core"
              (number (list n-or-timespec unit absolute)))
            nil))))
 
-(defun until-pin (pin-id state &optional (timeout '(5 :seconds)) (poll 1))
+(defun until-pin (pin-id state &optional (timeout '(1 :second)) (poll 100))
   "Waits until the pin is in the given state. Returns non-nil if the pin is in
 the desired state.
 
@@ -156,7 +191,7 @@ Respects *core*"
        do (cycles-rel poll))))
 
 (defmacro cycles-between
-    ((&key (start 0) stop (skip 1) (finally 0)) &body condition)
+    ((&key (start 0) stop (skip 100) (finally 0)) &body condition)
   "Runs :start cycles, then run condition every :skip cycles until it returns
 non-nil. If it never returns non-nil, stop running it after :stop
 cycles (counting from when cycles-between is called) anyway. Returns the
@@ -203,9 +238,20 @@ Respects *core*"
        do (cycles-rel skip)
        finally (return (/ positive-samples total-samples)))))
 
+(defun until-uart (text &key serial-port (timeout '(1 :second)) (skip 100))
+  "Runs until the given text is sent over the serial port. Returns non-nil if
+that text was found before the timeout. Ignores text that was already sent
+before (until-uart) was called. Will poll at intervals indicated by skip."
+  (resolve-timespecs (timeout) (skip)
+    (loop
+       with start2 = (length (uart-string serial-port))
+       while (<= (+ (elapsed) skip) timeout)
+       until (search text (uart-string serial-port) :from-end t :start2 start2)
+       do (cycles-rel skip))))
+
 ;;; TEST UTILITIES
 
-(defmacro runsuite ((&key setup (core-setup *core*) teardown name) &body body)
+(defmacro runsuite ((&key setup (core *core*) teardown name) &body body)
   "Create a Gooptest suite. A suite is a collection of related tests. Setup and
 teardown are run before and after every test in the lexical environment of the
 body of defsuite. Core-setup is run after setup and its result is dynamically
@@ -220,8 +266,8 @@ bound to *core* before every test, for convenience."
                    ;; and commas until it worked. My best guess: The rightmost
                    ;; comma belongs to the outermost backquote. This gets
                    ;; expanded to ,'(make-arduino-uno) for example.
-                   ,',setup
-                   (with-core ,',core-setup
+                   (with-core ,',core
+                     ,',setup
                      ,@body)
                    ,',teardown
                    (format t "PASS~%"))))

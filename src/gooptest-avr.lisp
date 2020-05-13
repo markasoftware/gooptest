@@ -74,6 +74,35 @@ numerical (0-7) pin number inside that port."
                                   (avr-ioctl-def #\a #\d #\c #\ )
                                   adc-channel)
                    (floor (* 1000 voltage)))))
+
+(defmethod core-start-uart ((instance avr-core) &optional (channel-int 0))
+  (declare (integer channel-int))
+  (assert (<= 0 channel-int 9))
+  ;; don't do anything if it's already started
+  (symbol-macrolet ((uart-buffer
+                     (nth channel-int (core-uart-buffers instance))))
+    (unless uart-buffer
+      (setf uart-buffer (make-array 0
+                                    :element-type '(vector (unsigned-byte 8))
+                                    :adjustable t
+                                    :fill-pointer t))
+      (let ((callback-name (gensym))
+            (channel (elt (write-to-string channel-int) 0)))
+        (eval
+         `(cffi:defcallback ,callback-name :void
+              ((irq :pointer) (value :uint32) (param :pointer))
+            (declare (ignore irq param))
+            (vector-push-extend
+             (coerce value 'unsigned-byte)
+             (nth ,channel-int (core-uart-buffers ,instance)))))
+        (avr-irq-register-notify
+         (avr-io-getirq (get-ptr instance)
+                        (avr-ioctl-def #\u #\a #\r channel)
+                        ;; Really should be +uart-irq-output+, but the less .h
+                        ;; files I can get away with the better.
+                        1)
+         (cffi:get-callback callback-name)
+         (cffi:null-pointer))))))
   
 
 (defmethod core-one-cycle ((instance avr-core))
@@ -104,6 +133,7 @@ numerical (0-7) pin number inside that port."
 
 (defmethod initialize-instance :after
     ((instance avr-core) &key mcu firmware-path frequency vcc)
+
   (let ((firmware-namestring (namestring (truename firmware-path)))
         (mcu-name (string-downcase mcu))
         )
@@ -119,9 +149,7 @@ numerical (0-7) pin number inside that port."
         (error "Malformatted firmware"))
       (avr-load-firmware (get-ptr instance) firmware))
 
-    (when frequency
-      (setf (avr-t.frequency (get-ptr instance)) frequency))
-
+    (setf (avr-t.frequency (get-ptr instance)) frequency)
     (when vcc
       (setf (avr-t.vcc (get-ptr instance)) vcc))
 
@@ -130,7 +158,6 @@ numerical (0-7) pin number inside that port."
     ;;                                      ()))
 
     ;; TODO: set frequency (and vcc?) using elf metadata if no initarg provided.
-    ;; Also, throw errors when frequency is not present (from gooptest core).
     ))
 
 ;;;; ARDUINO
@@ -214,6 +241,7 @@ compile the file using arduino-cli, so make sure it's installed!"
     (make-instance 'arduino-uno-core
                    :firmware-path firmware-truename
                    :frequency 16000000
+                   :vcc 5
                    :mcu :atmega328p)))
 
 (setf (fdefinition 'make-arduino-nano) #'make-arduino-uno)

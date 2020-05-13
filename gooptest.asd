@@ -6,7 +6,7 @@
   :license  "GPL-3.0"
   :version "0.0.1"
   :serial t
-  :depends-on (#:cffi #:cl-autowrap #:alexandria #:trivial-garbage)
+  :depends-on (#:cffi #:cl-autowrap #:alexandria #:uiop #:babel)
   :components ((:file "package")
                (:file "src/gooptest")
                (:static-file "src/simavr-proxy.h")
@@ -30,6 +30,6 @@
                (:static-file "at-least-two/at-least-two.ino")
                (:file "at-least-two")
 
-               (:static-file "analog-to-pwm/analog-to-pwm.ino")
-               (:file "analog-to-pwm")
+               (:static-file "analog-to-serial/analog-to-serial.ino")
+               (:file "analog-to-serial")
                ))

@@ -4,7 +4,7 @@
   "Test that an LED turns on when at least two of three buttons are depressed."
 
   (runsuite (:name "At Least Two"
-             :core-setup (make-arduino-uno (find-sketch "at-least-two")))
+             :core (make-arduino-uno (find-sketch "at-least-two")))
 
     (runtest "Light starts in the off state"
       (cycles 1000)

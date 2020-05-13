@@ -12,6 +12,11 @@
            #:set-pin-digital
            #:set-pin-analog
            #:assert-pin
+           #:uart-start
+           #:uart-stop
+           #:uart-data
+           #:uart-string
+           #:until-uart
 
            #:runsuite
            #:runtest
@@ -20,12 +25,16 @@
            #:core-elapsed
            #:core-vcc
            #:core-frequency
+           #:core-uart-buffers
            ;; Generic core functions (should be implemented by cores)
            #:core-one-cycle
            #:core-many-cycles
            #:core-pin
            #:core-set-pin-digital
            #:core-set-pin-analog
+           #:core-uart-start
+           #:core-uart-stop
+           #:core-uart-data
 
            ;; non-functions
            #:core                       ; class
