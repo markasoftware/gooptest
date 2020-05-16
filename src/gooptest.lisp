@@ -11,8 +11,7 @@
    (frequency :initarg :frequency :accessor core-frequency
               :initform (error "Core frequency is required")
               :type integer)
-   (uart-buffers :initform nil          ; channels are added as needed
-                 :accessor core-uart-buffers)))
+   ))
 
 (setf (documentation 'core-elapsed 'function)
       "The number of clock cycles executed.")
@@ -55,33 +54,41 @@ low."))
 same format as (pin). The voltage represents the absolute voltage at the
 input."))
 
-(defgeneric core-uart-start (c &optional uart-channel)
+(defgeneric core-uart-default-channel (c)
+  (:documentation "Return the a reasonable default uart-channel that can be
+passed as the last argument to the core-uart-* functions. If not implemented,
+functions like uart-start will error out if not passed a uart-channel
+argument."))
+
+(defgeneric core-uart-start (c uart-channel)
   (:documentation "Start listening and recording uart data on the given
 channel (or some reasonable default). It is valid for a core to listen to uart
 passively, without this function being called. uart-channel = nil is equivalet
 to the default, even if it's provided."))
 
-(defgeneric core-uart-stop (c &optional uart-channel)
+(defgeneric core-uart-stop (c uart-channel)
   (:documentation "May not do anything. You do /not/ need to call this before
 throwing away a core."))
 
-(defmethod core-uart-stop ((c core) &optional uart-channel)
+(defmethod core-uart-stop ((c core) uart-channel)
   "Noop. Override if you care."
   (declare (ignore uart-channel)))
 
-(defgeneric core-uart-data (c &optional uart-channel)
+(defgeneric core-uart-data (c uart-channel)
   (:documentation "Retrieve, as a vector of unsigned bytes, all uart data that
 has been sent so far on the given channel."))
 
-(defmethod core-uart-data ((c core) &optional (uart-channel 0))
-  "A useful default implementation for subclasses that use uart-buffers."
-  (nth (or uart-channel 0) (core-uart-buffers c)))
+(defgeneric core-uart-send (c byte uart-channel)
+  (:documentation "Send the given byte to the mcu over uart, immediately (no
+buffering on our side). Returns nil if the byte could not be received by the
+mcu (probably due to a full buffer, but not necessarily)."))
 
-(defun uart-string (&optional channel (encoding :ascii))
-  "Return all data sent over UART, as a string.
+(defun uart-string (&optional channel)
+  "Return all data sent over UART, as a string. Uses babel's default encoding;
+call (babel:octets-to-string) manually to override.
 
 Respects *core*"
-  (babel:octets-to-string (core-uart-data *core* channel) :encoding encoding))
+  (babel:octets-to-string (uart-data channel)))
 
 (deftype pin-output ()
   "What an mcu might set a pin to."
@@ -91,20 +98,34 @@ Respects *core*"
   `(let ((*core* ,the-core))
      ,@body))
 
-(defmacro defcorewrapper (new-fun old-fun lambda-list)
+(defmacro defcorewrapper (new-fun old-fun lambda-list &optional last-arg-getter)
   "Creates a *core*-respecting wrapper for a CLOS method on core."
   `(defun ,new-fun ,lambda-list
-     ,(documentation old-fun 'function)
+     ,(concatenate 'string
+                   (documentation old-fun 'function)
+                   "
+
+Respects *core*.")
      (assert *core*)
-     (,old-fun *core* ,@(remove '&optional lambda-list))))
+     ,(if last-arg-getter
+          `(,old-fun *core* ,@(loop for el in lambda-list
+                                 until (eq '&optional el)
+                                 collect el)
+                     (or ,(lastcar lambda-list) (,last-arg-getter *core*)))
+          `(,old-fun *core* ,@lambda-list))))
 
 (defcorewrapper pin core-pin (pin-designator))
 (defcorewrapper set-pin-digital core-set-pin-digital (pin-designator high))
 (defcorewrapper set-pin-analog core-set-pin-analog (pin-designator voltage))
 (defcorewrapper elapsed core-elapsed ())
-(defcorewrapper uart-start core-uart-start (&optional uart-channel))
-(defcorewrapper uart-stop core-uart-stop (&optional uart-channel))
-(defcorewrapper uart-data core-uart-data (&optional uart-channel))
+(defcorewrapper uart-start core-uart-start (&optional uart-channel)
+                core-uart-default-channel)
+(defcorewrapper uart-stop core-uart-stop (&optional uart-channel)
+                core-uart-default-channel)
+(defcorewrapper uart-data core-uart-data (&optional uart-channel)
+                core-uart-default-channel)
+(defcorewrapper uart-send-byte core-uart-send (byte &optional uart-channel)
+                core-uart-default-channel)
 
 (defsetf pin (p) (new-state)
   "Set the pin to a certain state. If new-state is a number, set to that
@@ -138,8 +159,8 @@ Respects *core*."
                            ((:us :microsecond :microseconds) 1/1000000)
                            ((:ms :millisecond :milliseconds) 1/1000)
                            ((:s :second :seconds) 1)
-                           ((:min :minute :minutes) 60)
-                           ((:hr :hour :hours) 3600)))))))
+                           ((:m :minute :minutes) 60)
+                           ((:h :hour :hours) 3600)))))))
       (cond
         ((eq absolute into-absolute) cycles)
         (absolute (- cycles (core-elapsed *core*)))
@@ -238,7 +259,8 @@ Respects *core*."
 ;;        finally (return (/ positive-samples total-samples)))))
 
 ;; TODO: normalize the parameters. I think we should call start, stop, skip,
-;; finally. (i.e, rename timeout -> stop on other methods)
+;; finally. (i.e, rename timeout -> stop on other methods). Whenever we do this,
+;; also update the etypecase below to be more recursive!
 (defun until-uart (text &key serial-port (stop '(1 :s)) (skip 100) (finally 0))
   "Runs until the given text is sent over the serial port. Returns non-nil if
 that text was found before the timeout. Ignores text that was already sent
@@ -264,7 +286,33 @@ Respects *core*."
         ((vector (unsigned-byte 8)) (search text (uart-data serial-port)
                                             :from-end t :start2 start))))))
 
+(defun uart-send
+    (data
+     &key (channel (core-uart-default-channel *core*)) (baudrate 115200)
+     &aux (byterate (floor baudrate 10)) buffer-overflowed-p)
+  "Send the given data, which should be a string, byte array, byte, or
+character, over the given uart channel (or the default). To control character
+encoding, use a byte array. Returns non-nil if all data were sent without
+overflowing any buffers on the mcu.
+
+Respects *core*"
+  (etypecase data
+    (string (uart-send (babel:string-to-octets data)
+                       :channel channel :baudrate baudrate))
+    (character (uart-send (string data)
+                          :channel channel :baudrate baudrate))
+    ((unsigned-byte 8) (uart-send-byte data channel))
+    ((vector (unsigned-byte 8))
+     (loop
+        for byte across data
+        unless (uart-send-byte byte channel)
+        do (setf buffer-overflowed-p t)
+        do (cycles-rel (floor (core-frequency *core*) byterate)))
+     (not buffer-overflowed-p))))
+
 ;;; TEST UTILITIES
+
+;; TODO: convert to some (in-suite) system like fiveam uses
 
 (defmacro runsuite ((&key setup (core *core*) teardown name) &body body)
   "Create a Gooptest suite. A suite is a collection of related tests. Setup and

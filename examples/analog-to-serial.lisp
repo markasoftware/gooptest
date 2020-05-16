@@ -1,6 +1,6 @@
 (in-package #:gooptest/examples)
 
-(defun analog-to-pwm ()
+(defun analog-to-serial ()
   "Test that the analog voltage gets sent over serial UART."
 
   (runsuite (:name "Analog to Serial"

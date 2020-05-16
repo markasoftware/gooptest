@@ -1,6 +1,9 @@
 (defpackage #:gooptest/examples
   (:use #:cl #:gooptest #:gooptest-avr)
-  (:export #:blink))
+  (:export #:blink
+           #:at-least-two
+           #:analog-to-serial
+           #:serial-spongebob))
 
 (in-package #:gooptest/examples)
 

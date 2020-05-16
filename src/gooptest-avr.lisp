@@ -6,7 +6,11 @@
 (defclass avr-core (core)
   ((avr-ptr :accessor get-ptr :type avr-t)
    (mcu-name :accessor get-mcu-name :type keyword)
-   ))
+   (uarts :accessor get-uarts :initform (loop for i from 0 to 9 collect nil)
+          :documentation "Each uart is related to its index in this list. Each
+item starts as nil then becomes a list where the first element is a byte vector
+and the second is a boolean indicating xon. Not a cons because more attributes
+may be needed in the future. TODO: what are those attributes?")))
 
 (defun avr-ioctl-def (c1 c2 c3 c4)
   "See simavr/sim_io.h"
@@ -63,6 +67,7 @@ numerical (0-7) pin number inside that port."
   ;; For analog only, the pin may be, for example, :adc3 to indicate the adc
   ;; channel instead of the pin. There is no logical connection between pins and
   ;; adc channels in simavr.
+  (declare (number voltage))
   (let ((adc-channel
          (if (starts-with-subseq "ADC" (string-upcase p))
              (parse-integer (string p) :start 3)
@@ -75,37 +80,92 @@ numerical (0-7) pin number inside that port."
                                   adc-channel)
                    (floor (* 1000 voltage)))))
 
-(defmethod core-uart-start ((instance avr-core) &optional (channel-int 0))
-  ;(declare ((or integer nil) channel-int))
-  ;; TODO: can we do the optional stuff more reliably?
-  (setf channel-int (or channel-int 0))
-  (assert (<= 0 channel-int 9))
+(defmethod core-uart-default-channel ((instance avr-core))
+  (declare (ignore instance))
+  0)
+
+(defmacro make-irq-callback (value-arg &body body)
+  "Make a valid callback for an IRQ. Every element of the body should be quoted.
+This is so you can embed values into the callback. Expands into a form that
+defines the callback at runtime and evaluates to the callback itself (from
+cffi:get-callback)"
+  (with-gensyms (meta-gensym irq-arg param-arg)
+    `(with-gensyms (,meta-gensym)
+       (eval
+        `(cffi:defcallback ,,meta-gensym :void
+             ((,',irq-arg :pointer)
+              (,',value-arg :uint32)
+              (,',param-arg :pointer))
+           (declare (ignore ,',irq-arg ,',param-arg))
+           ,,@body))
+       (cffi:get-callback ,meta-gensym))))
+
+(defun channel-ioctl (channel)
+  (declare ((integer 0 9) channel))
+  (avr-ioctl-def #\u #\a #\r (elt (write-to-string channel) 0)))
+
+(defmethod core-uart-start ((instance avr-core) channel)
+  (declare ((integer 0 9) channel))
   ;; don't do anything if it's already started
-  (symbol-macrolet ((uart-buffer
-                     (nth channel-int (core-uart-buffers instance))))
-    (unless uart-buffer
-      (setf uart-buffer (make-array 0
-                                    :element-type '(unsigned-byte 8)
-                                    :adjustable t
-                                    :fill-pointer t))
-      (let ((callback-name (gensym))
-            (channel (elt (write-to-string channel-int) 0)))
-        (eval
-         `(cffi:defcallback ,callback-name :void
-              ((irq :pointer) (value :uint32) (param :pointer))
-            (declare (ignore irq param))
-            (vector-push-extend
-             (coerce value 'unsigned-byte)
-             (nth ,channel-int (core-uart-buffers ,instance)))))
-        (avr-irq-register-notify
-         (avr-io-getirq (get-ptr instance)
-                        (avr-ioctl-def #\u #\a #\r channel)
-                        ;; Really should be +uart-irq-output+, but the less .h
-                        ;; files I can get away with the better.
-                        1)
-         (cffi:get-callback callback-name)
-         (cffi:null-pointer))))))
+  (symbol-macrolet ((uart
+                     (nth channel (get-uarts instance))))
+    (unless uart
+      (setf uart (list
+                  (make-array 0
+                              :element-type '(unsigned-byte 8)
+                              :adjustable t
+                              :fill-pointer t)
+                  t))
+
+      (avr-irq-register-notify
+       (avr-io-getirq (get-ptr instance)
+                      (channel-ioctl channel)
+                      ;; +uart-irq-output+
+                      1)
+       (make-irq-callback value
+         `(vector-push-extend
+           (coerce value '(unsigned-byte 8))
+           ;; TODO: figure out how to use the uart symbol macro here without
+           ;; breaking
+           (first (nth ,channel (get-uarts ,instance)))))
+       (cffi:null-pointer))
+
+      (avr-irq-register-notify
+       (avr-io-getirq (get-ptr instance)
+                      (channel-ioctl channel)
+                      ;; +uart-irq-xon+
+                      2)
+       (make-irq-callback value
+         '(declare (ignore value))
+         `(setf (second (nth ,channel (get-uarts ,instance))) t))
+       (cffi:null-pointer))
+
+      (avr-irq-register-notify
+       (avr-io-getirq (get-ptr instance)
+                      (channel-ioctl channel)
+                      ;; +uart-irq-xoff+
+                      3)
+       (make-irq-callback value
+         '(declare (ignore value))
+         `(setf (second (nth ,channel (get-uarts ,instance))) nil))
+       (cffi:null-pointer))
+      )))
+
+(defmethod core-uart-data ((instance avr-core) channel)
+  (declare ((integer 0 9) channel))
+  (first (nth channel (get-uarts instance))))
   
+(defmethod core-uart-send ((instance avr-core) byte channel)
+  (declare ((unsigned-byte 8) byte)
+           ((integer 0 9) channel))
+  (when (second (nth channel (get-uarts instance)))
+    (avr-raise-irq
+     (avr-io-getirq (get-ptr instance)
+                    (channel-ioctl channel)
+                    ;; TODO: replace with +uart-irq-input+
+                    0)
+     byte)
+    t))
 
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
@@ -141,7 +201,7 @@ numerical (0-7) pin number inside that port."
         )
 
     (setf (get-mcu-name instance) (intern (string-upcase mcu) :keyword))
-    (setf (core-uart-buffers instance) (loop for i from 0 to 9 collect nil))
+    (setf (get-uarts instance) (loop for i from 0 to 9 collect nil))
 
     (setf (get-ptr instance) (avr-make-mcu-by-name mcu-name))
     (when (cffi:null-pointer-p (ptr (get-ptr instance)))

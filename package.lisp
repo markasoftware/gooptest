@@ -15,6 +15,8 @@
            #:uart-start
            #:uart-stop
            #:uart-data
+           #:uart-send-byte
+           #:uart-send
            #:uart-string
            #:until-uart
 
@@ -35,6 +37,8 @@
            #:core-uart-start
            #:core-uart-stop
            #:core-uart-data
+           #:core-uart-send
+           #:core-uart-default-channel
 
            ;; non-functions
            #:core                       ; class

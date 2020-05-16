@@ -32,4 +32,7 @@
 
                (:static-file "analog-to-serial/analog-to-serial.ino")
                (:file "analog-to-serial")
+
+               (:static-file "serial-spongebob/serial-spongebob.ino")
+               (:file "serial-spongebob")
                ))
