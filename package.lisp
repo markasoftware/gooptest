@@ -43,6 +43,8 @@
            ;; non-functions
            #:core                       ; class
            #:*core*                     ; context variable
+           #:*uart-baudrate*
+           #:*uart-byte-size*
            #:pin-output                 ; type
            ))
 

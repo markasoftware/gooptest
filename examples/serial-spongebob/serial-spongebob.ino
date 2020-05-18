@@ -1,7 +1,7 @@
 void setup() {
 	// serial send baud rate just controls down how fast it sends -- error (eg,
 	// divisibility with the clock rate) doesn't matter when simulating.
-	Serial.begin(123456);
+	Serial.begin(115200);
 }
 
 void loop() {

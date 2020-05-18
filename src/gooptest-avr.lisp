@@ -7,10 +7,9 @@
   ((avr-ptr :accessor get-ptr :type avr-t)
    (mcu-name :accessor get-mcu-name :type keyword)
    (uarts :accessor get-uarts :initform (loop for i from 0 to 9 collect nil)
-          :documentation "Each uart is related to its index in this list. Each
-item starts as nil then becomes a list where the first element is a byte vector
-and the second is a boolean indicating xon. Not a cons because more attributes
-may be needed in the future. TODO: what are those attributes?")))
+          :documentation "Each uart is either nil, indicating not initialized,
+or a vector of unsigned bytes, representing everything received over
+that uart so far.")))
 
 (defun avr-ioctl-def (c1 c2 c3 c4)
   "See simavr/sim_io.h"
@@ -20,6 +19,10 @@ may be needed in the future. TODO: what are those attributes?")))
        (ash (intify c2) 16)
        (ash (intify c3) 8)
        (intify c4))))
+
+(defun uart-fifo-empty-p (fifo)
+  "Reimplementing the static function uart_fifo_isempty()."
+  (= (uart-fifo-t.write fifo) (uart-fifo-t.read fifo)))
 
 (defmacro with-pin (port-var pin-var pin-designator &body body)
   "Bind port-var to the upper case character of the port and pin-var to the
@@ -100,72 +103,92 @@ cffi:get-callback)"
            ,,@body))
        (cffi:get-callback ,meta-gensym))))
 
-(defun channel-ioctl (channel)
-  (declare ((integer 0 9) channel))
-  (avr-ioctl-def #\u #\a #\r (elt (write-to-string channel) 0)))
+(defun uart-channel-char (channel-int)
+  (declare ((integer 0 9) channel-int))
+  (elt (write-to-string channel-int) 0))
 
 (defmethod core-uart-start ((instance avr-core) channel)
   (declare ((integer 0 9) channel))
-  ;; don't do anything if it's already started
   (symbol-macrolet ((uart
                      (nth channel (get-uarts instance))))
+    ;; don't do anything if it's already started
     (unless uart
-      (setf uart (list
-                  (make-array 0
-                              :element-type '(unsigned-byte 8)
-                              :adjustable t
-                              :fill-pointer t)
-                  t))
+      (setf uart (make-array 0
+                             :element-type '(unsigned-byte 8)
+                             :adjustable t
+                             :fill-pointer t))
 
       (avr-irq-register-notify
        (avr-io-getirq (get-ptr instance)
-                      (channel-ioctl channel)
-                      ;; +uart-irq-output+
-                      1)
+                      (avr-ioctl-def #\u #\a #\r (uart-channel-char channel))
+                      +uart-irq-output+)
        (make-irq-callback value
          `(vector-push-extend
            (coerce value '(unsigned-byte 8))
            ;; TODO: figure out how to use the uart symbol macro here without
            ;; breaking
-           (first (nth ,channel (get-uarts ,instance)))))
-       (cffi:null-pointer))
-
-      (avr-irq-register-notify
-       (avr-io-getirq (get-ptr instance)
-                      (channel-ioctl channel)
-                      ;; +uart-irq-xon+
-                      2)
-       (make-irq-callback value
-         '(declare (ignore value))
-         `(setf (second (nth ,channel (get-uarts ,instance))) t))
-       (cffi:null-pointer))
-
-      (avr-irq-register-notify
-       (avr-io-getirq (get-ptr instance)
-                      (channel-ioctl channel)
-                      ;; +uart-irq-xoff+
-                      3)
-       (make-irq-callback value
-         '(declare (ignore value))
-         `(setf (second (nth ,channel (get-uarts ,instance))) nil))
+           (nth ,channel (get-uarts ,instance))))
        (cffi:null-pointer))
       )))
 
 (defmethod core-uart-data ((instance avr-core) channel)
   (declare ((integer 0 9) channel))
-  (first (nth channel (get-uarts instance))))
+  (nth channel (get-uarts instance)))
   
 (defmethod core-uart-send ((instance avr-core) byte channel)
+  ;; The problem with XON and friends is that simavr has its own 64-byte
+  ;; internal uart buffer. This is slightly helpful if you want to send lots of
+  ;; bytes to the avr and let simavr handle the details (though not that
+  ;; helpful, because it's only 64 bytes so you still need to constantly be
+  ;; listening for xon and xoff rather than just benig able to fire and forget).
+  ;; The problem for us is that we want to simulate lost bytes, because that's a
+  ;; very possible real world problem. So we would prefer an API that simply
+  ;; places a byte into the receive register on the AVR, replacing whatever's
+  ;; there, even if whatever's there has not been read. Unfortunately, no such
+  ;; API exists in simavr, so we have to hack around a little bit. What I've
+  ;; chosen to do is copy the logic from avr_ioctl to find the uart in the io
+  ;; linked list. Then, we check if the fifo has any element in it. If so, the
+  ;; buffer is full. The alternative is to check if the rxc interrupt is raised,
+  ;; but this isn't entirely correct behavior; AVR chips actually have a 2-byte
+  ;; hardware buffer (one in the directly accessible register, another in the
+  ;; shift register than handles incoming bytes directly). So letting simavr
+  ;; handle the internal register, then allowing up to one byte in the FIFO,
+  ;; *mostly* preserves correct behavior. We also manually set the DOR flag.
   (declare ((unsigned-byte 8) byte)
            ((integer 0 9) channel))
-  (when (second (nth channel (get-uarts instance)))
-    (avr-raise-irq
-     (avr-io-getirq (get-ptr instance)
-                    (channel-ioctl channel)
-                    ;; TODO: replace with +uart-irq-input+
-                    0)
-     byte)
-    t))
+  ;; Maybe: Store the uart IO module pointer in the core struct?
+  (let* ((io-uart
+          (autowrap:wrap-pointer
+           (autowrap:ptr
+            (do ((io-uart
+                  (avr-t.io-port* (get-ptr instance))
+                  (avr-io-t.next* io-uart)))
+                ((and
+                  (not (cffi:null-pointer-p (avr-io-t.ioctl io-uart)))
+                  (/= -1
+                      (cffi:with-foreign-object (param :uint32)
+                        (cffi:foreign-funcall-pointer
+                         (avr-io-t.ioctl io-uart) ()
+                         :pointer (autowrap:ptr io-uart)
+                         :uint32 (avr-ioctl-def #\u #\a #\g
+                                                (uart-channel-char channel))
+                         :pointer param
+                         :int))))
+                 io-uart)
+              (when (cffi:null-pointer-p (avr-io-t.next io-uart))
+                (error "Could not find IO module for uart channel"))))
+           'avr-uart-t))
+         (fifo-empty-p (uart-fifo-empty-p (avr-uart-t.input io-uart))))
+    (if fifo-empty-p
+        (avr-raise-irq
+         (avr-io-getirq (get-ptr instance)
+                        (avr-ioctl-def #\u #\a #\r (uart-channel-char channel))
+                        +uart-irq-input+)
+         byte)
+        ;; avr_regbit_setto is defined in a header so we can't link to it.
+        ;; (avr-regbit-setto (get-ptr instance) (avr-uart-t.dor io-uart) 1)
+        )
+    fifo-empty-p))
 
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))

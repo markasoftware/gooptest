@@ -286,29 +286,45 @@ Respects *core*."
         ((vector (unsigned-byte 8)) (search text (uart-data serial-port)
                                             :from-end t :start2 start))))))
 
+(defvar *uart-baudrate* 115200
+  "The default baudrate for (uart-send). Note that if the frequency is not
+totally divisible by the byterate, you should decrease it to account for the
+error, otherwise you will get missing bytes.")
+(defvar *uart-byte-size* 10
+  "The default byte size for (uart-send)")
+
 (defun uart-send
     (data
-     &key (channel (core-uart-default-channel *core*)) (baudrate 115200)
-     &aux (byterate (floor baudrate 10)) buffer-overflowed-p)
+     &key
+       (channel (core-uart-default-channel *core*))
+       (baudrate *uart-baudrate*)
+       (byte-size *uart-byte-size*) ; default to 8N1
+     &aux (cycles-per-byte (ceiling (core-frequency *core*)
+                                    (/ baudrate byte-size)))
+       buffer-overflowed-p)
   "Send the given data, which should be a string, byte array, byte, or
 character, over the given uart channel (or the default). To control character
 encoding, use a byte array. Returns non-nil if all data were sent without
-overflowing any buffers on the mcu.
+overflowing any buffers on the mcu. Uses the baud rate and byte size to control
+the delay between characters within the same call, but will not enforce a delay
+until a subsequent call; Add some delay between calls yourself!
 
 Respects *core*"
-  (etypecase data
-    (string (uart-send (babel:string-to-octets data)
-                       :channel channel :baudrate baudrate))
-    (character (uart-send (string data)
-                          :channel channel :baudrate baudrate))
-    ((unsigned-byte 8) (uart-send-byte data channel))
-    ((vector (unsigned-byte 8))
-     (loop
-        for byte across data
-        unless (uart-send-byte byte channel)
-        do (setf buffer-overflowed-p t)
-        do (cycles-rel (floor (core-frequency *core*) byterate)))
-     (not buffer-overflowed-p))))
+  (setf data
+        (etypecase data
+          ((or string character) (babel:string-to-octets (string data)))
+          ((unsigned-byte 8)
+           (return-from uart-send (uart-send-byte data channel)))
+          ((vector (unsigned-byte 8)) data))) 
+  (loop
+     for byte across data
+     for i from 0
+     unless (uart-send-byte byte channel)
+     do (setf buffer-overflowed-p t)
+     ;; fuck fenceposts dude
+     unless (= i (1- (length data)))
+     do (cycles-rel cycles-per-byte))
+  (not buffer-overflowed-p))
 
 ;;; TEST UTILITIES
 

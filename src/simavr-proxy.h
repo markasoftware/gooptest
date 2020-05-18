@@ -6,3 +6,4 @@
 #include <simavr/sim_elf.h>
 #include <simavr/avr_ioport.h>
 #include <simavr/sim_cycle_timers.h>
+#include <simavr/avr_uart.h>
