@@ -35,8 +35,18 @@ simulation"
         (assert (until-uart "jUnIt")))
 
       (runtest "Buffer Overflow"
-        (let ((lyrics "(till I come back to your side)
-We'll forget the tears we've cried"))
+        (let* ((lyrics "(till I come back to your side) We'll forget the tears we've cried
+")
+               (spongey-lyrics
+                (coerce
+                 (loop
+                    for i from 0
+                    for char across lyrics
+                    unless (char= char #\Newline)
+                    collect (if (zerop (mod i 2))
+                                (char-downcase char)
+                                (char-upcase char)))
+                 'string)))
 
           (cycles 10000)
           (uart-send "wait
@@ -50,14 +60,16 @@ We'll forget the tears we've cried"))
           ;; because the baudrate only matters at the electrical level. TODO:
           ;; throw an error when baud rates mismatch?
           (cycles 200 :ms)
-          (assert (uart-send lyrics :baudrate 9600))
+          (uart-send lyrics :baudrate 9600 :finally nil)
+          (assert (until-uart spongey-lyrics))
 
-          (cycles 50 :ms)
           (uart-send "wait
 ")
 
           ;; this should fail; at the high baudrate, all bytes get through before
           ;; the 250ms. This would still fail without the (cycles 200 :ms)
           (cycles 200 :ms)
-          (assert (not (uart-send lyrics :finally nil)))
+          (uart-send lyrics :finally nil)
+          (assert (not (until-uart spongey-lyrics)))
+          ;; Inspect (uart-string) here for fun; none of the new bytes exist!
           )))))

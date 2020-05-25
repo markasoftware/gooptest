@@ -22,7 +22,8 @@ that uart so far.")))
 
 (defun uart-fifo-empty-p (fifo)
   "Reimplementing the static function uart_fifo_isempty()."
-  (< (uart-fifo-t.write fifo) (mod (1+ (uart-fifo-t.read fifo)) 64)))
+  ;; I messed up the logic for this once and wasted about >4 hours
+  (<= (mod (- (uart-fifo-t.write fifo) (uart-fifo-t.read fifo)) 64) 1))
 
 (defmacro with-pin (port-var pin-var pin-designator &body body)
   "Bind port-var to the upper case character of the port and pin-var to the
