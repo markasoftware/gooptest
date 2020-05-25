@@ -330,38 +330,34 @@ Respects *core*"
 
 ;;; TEST UTILITIES
 
-;; TODO: convert to some (in-suite) system like fiveam uses
+(defvar *suite* nil
+  "The symbol designating the current test suite.")
 
-(defmacro runsuite ((&key setup (core *core*) teardown name) &body body)
-  "Create a Gooptest suite. A suite is a collection of related tests. Setup and
-teardown are run before and after every test in the lexical environment of the
-body of defsuite. Core-setup is run after setup and its result is dynamically
-bound to *core* before every test, for convenience."
-  ;; These symbols are in the gooptest package, so no need to fear!
-  `(macrolet ((runtest (name &body body)
-                `(progn
-                   (format t "    ~A RUN..." ,name)
-                   ;; I thought I would take this opportunity to really learn
-                   ;; and understand double backquote syntax. But instead, I
-                   ;; just fucked around with different combinations of quotes
-                   ;; and commas until it worked. My best guess: The rightmost
-                   ;; comma belongs to the outermost backquote. This gets
-                   ;; expanded to ,'(make-arduino-uno) for example.
-                   (with-core ,',core
-                     ,',setup
-                     ,@body)
-                   ,',teardown
-                   (format t "PASS~%"))))
-     (format t "SUITE ~A BEGIN~%" ,name)
-     ,@body
-     (format t "SUITE ~A END~%" ,name)))
+(defmacro in-suite (sym)
+  `(setq *suite* ',sym))
+
+(defmacro defsuite (name &key setup (core *core*) teardown)
+  "Expands into a form that defines a test suite with the given name. Before
+each test in the suite, *core* is set to the result of :core, then :setup is
+run. :teardown is run after each test."
+  (declare (symbol name))
+  ;; haters will say it's photoshop
+  `(setf (get ',name 'suite) `(,',setup ,',core ,',teardown)))
 
 (defmacro runtest (name &body body)
   "Run a test, respecting the current suite and catching any errors."
-  `(progn
-     (format t "~A RUN..." ,name)
-     ,@body
-     (format t "PASS~%")))
+  `(if *suite*
+       (destructuring-bind (setup core teardown) (get *suite* 'suite)
+         (format t "~A/~A RUN..." *suite* ,name)
+         (with-core (eval core)
+           (eval setup)
+           ,@body
+           (eval teardown))
+         (format t "PASS~%"))
+       (progn
+         (format t "~A RUN..." ,name)
+         ,@body
+         (format t "PASS~%"))))
 
 (defun assert-pin (state pin-sym)
   (assert (eq state (pin pin-sym))))

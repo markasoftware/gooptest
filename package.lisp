@@ -21,7 +21,8 @@
            #:uart-string
            #:until-uart
 
-           #:runsuite
+           #:defsuite
+           #:in-suite
            #:runtest
 
            ;; Useful core functions
@@ -44,6 +45,7 @@
            ;; non-functions
            #:core                       ; class
            #:*core*                     ; context variable
+           #:*suite*
            #:*uart-baudrate*
            #:*uart-byte-size*
            #:pin-output                 ; type
