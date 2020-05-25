@@ -22,7 +22,7 @@ that uart so far.")))
 
 (defun uart-fifo-empty-p (fifo)
   "Reimplementing the static function uart_fifo_isempty()."
-  (= (uart-fifo-t.write fifo) (uart-fifo-t.read fifo)))
+  (< (uart-fifo-t.write fifo) (mod (1+ (uart-fifo-t.read fifo)) 64)))
 
 (defmacro with-pin (port-var pin-var pin-designator &body body)
   "Bind port-var to the upper case character of the port and pin-var to the
@@ -134,6 +134,32 @@ cffi:get-callback)"
 (defmethod core-uart-data ((instance avr-core) channel)
   (declare ((integer 0 9) channel))
   (nth channel (get-uarts instance)))
+
+(defun channel-fifo-empty-p (instance channel)
+  (let* ((io-uart
+          (autowrap:wrap-pointer
+           (autowrap:ptr
+            (do ((io-uart
+                  (avr-t.io-port* (get-ptr instance))
+                  (avr-io-t.next* io-uart)))
+                ((and
+                  (not (cffi:null-pointer-p (avr-io-t.ioctl io-uart)))
+                  (/= -1
+                      (cffi:with-foreign-object (param :uint32)
+                        (cffi:foreign-funcall-pointer
+                         (avr-io-t.ioctl io-uart) ()
+                         :pointer (autowrap:ptr io-uart)
+                         :uint32 (avr-ioctl-def #\u #\a #\g
+                                                (uart-channel-char channel))
+                         :pointer param
+                         :int))))
+                 io-uart)
+              (when (cffi:null-pointer-p (avr-io-t.next io-uart))
+                (error "Could not find IO module for uart channel"))))
+           'avr-uart-t))
+         (fifo-empty-p (uart-fifo-empty-p (avr-uart-t.input io-uart))))
+    (break)
+    fifo-empty-p))
   
 (defmethod core-uart-send ((instance avr-core) byte channel)
   ;; The problem with XON and friends is that simavr has its own 64-byte
@@ -235,6 +261,7 @@ cffi:get-callback)"
         (error "Malformatted firmware"))
       (avr-load-firmware (get-ptr instance) firmware))
 
+    (setf (avr-t.log (get-ptr instance)) +log-trace+)
     (setf (avr-t.frequency (get-ptr instance)) frequency)
     (when vcc
       (setf (avr-t.vcc (get-ptr instance)) (floor (* 1000 vcc)))

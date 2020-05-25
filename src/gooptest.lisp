@@ -298,7 +298,8 @@ error, otherwise you will get missing bytes.")
      &key
        (channel (core-uart-default-channel *core*))
        (baudrate *uart-baudrate*)
-       (byte-size *uart-byte-size*) ; default to 8N1
+       (byte-size *uart-byte-size*)
+       (finally t)
      &aux (cycles-per-byte (ceiling (core-frequency *core*)
                                     (/ baudrate byte-size)))
        buffer-overflowed-p)
@@ -306,8 +307,9 @@ error, otherwise you will get missing bytes.")
 character, over the given uart channel (or the default). To control character
 encoding, use a byte array. Returns non-nil if all data were sent without
 overflowing any buffers on the mcu. Uses the baud rate and byte size to control
-the delay between characters within the same call, but will not enforce a delay
-until a subsequent call; Add some delay between calls yourself!
+the delay between characters. If finally is non-nil (the default), will wait at
+the end of transmission the equivalent of one characters length, so that it is
+safe to call (uart-send) multiple times in a row.
 
 Respects *core*"
   (setf data
@@ -322,7 +324,7 @@ Respects *core*"
      unless (uart-send-byte byte channel)
      do (setf buffer-overflowed-p t)
      ;; fuck fenceposts dude
-     unless (= i (1- (length data)))
+     when (or finally (< i (1- (length data))))
      do (cycles-rel cycles-per-byte))
   (not buffer-overflowed-p))
 

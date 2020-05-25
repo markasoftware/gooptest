@@ -17,23 +17,26 @@ simulation"
         ;; fun fact: this used to be 1000, but the arduino serial can't start up
         ;; in 1000 cycles, so the g of gooptest below was missing.
         (cycles 10000)
-        (uart-send "gooptest
-")
+        (assert (uart-send "gooptest
+" :finally nil))
         (assert (until-uart "gOoPtEsT")))
 
       (runtest "Advanced Spongebobifying"
         (cycles 10000)
         (uart-send "gooptest
-")
+" :finally nil)
         (assert (until-uart "gOoPtEsT"))
+        ;; To demonstrate proper use of finally: If we set it to nil, we need to
+        ;; manually put cycles in-between the (uart-send) calls, otherwise the
+        ;; cycles are sent at too high a baud rate.
+        (cycles 1500)
         (uart-send "junit
-")
+" :finally nil)
         (assert (until-uart "jUnIt")))
 
       (runtest "Buffer Overflow"
         (let ((lyrics "(till I come back to your side)
-We'll forget the tears we've cried
-"))
+We'll forget the tears we've cried"))
 
           (cycles 10000)
           (uart-send "wait
@@ -49,10 +52,12 @@ We'll forget the tears we've cried
           (cycles 200 :ms)
           (assert (uart-send lyrics :baudrate 9600))
 
+          (cycles 50 :ms)
           (uart-send "wait
 ")
 
           ;; this should fail; at the high baudrate, all bytes get through before
           ;; the 250ms. This would still fail without the (cycles 200 :ms)
           (cycles 200 :ms)
-          (assert (not (uart-send lyrics :baudrate 38400))))))))
+          (assert (not (uart-send lyrics :finally nil)))
+          )))))

@@ -6,6 +6,7 @@
   (:export #:with-core
            #:cycles
            #:cycles-between
+           #:elapsed
            #:until-pin
            #:pin-duty-cycle
            #:pin
