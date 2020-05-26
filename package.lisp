@@ -53,9 +53,6 @@
 
 (defpackage #:gooptest-avr-cl-autowrap
   (:use #:cl #:autowrap))
-;; (c-include) exports everything, for better or (probably) for worse. TODO:
-;; look into that, and removing some of the symbols we don't need in the first
-;; place.
 
 (defpackage #:gooptest-avr
   (:nicknames #:goop-avr)

@@ -58,8 +58,7 @@ simulation"
         ;; 9600 we are doing almost 1 byte/ms (each byte is 10 including start
         ;; and stop). Note that the send works fine even though the arduino is
         ;; listening at a different baud rate than we are sending at; this is
-        ;; because the baudrate only matters at the electrical level. TODO:
-        ;; throw an error when baud rates mismatch?
+        ;; because the baudrate only matters at the electrical level.
         (cycles 200 :ms)
         (uart-send lyrics :baudrate 9600 :finally nil)
         (assert (until-uart spongey-lyrics))

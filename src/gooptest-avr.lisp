@@ -206,8 +206,6 @@ cffi:get-callback)"
   (symbol-macrolet ((avr (get-ptr instance)))
     ;; probably don't need this check
     (when (plusp n)
-      ;; TODO: off-by-one errors, make sure we reset cycle limit appropriately
-      ;; at the end, etc.
       (setf (c-ref avr avr-t :run-cycle-limit) n)
       (avr-cycle-timer-register avr
                                 n
@@ -246,8 +244,6 @@ cffi:get-callback)"
     ;; TODO
     ;; (trivial-garbage:finalize instance (lambda ()
     ;;                                      ()))
-
-    ;; TODO: set frequency (and vcc?) using elf metadata if no initarg provided.
     ))
 
 ;;;; ARDUINO

@@ -235,28 +235,28 @@ Respects *core*."
               do (cycles-rel ,skip))
          (cycles-abs ,finally)))))
 
-;; (defun pin-duty-cycle (p stop &optional (skip 1))
-;;   "Returns the duty cycle of the given pin, as a fraction. Records for the
-;; length given by the timespec. Works for digital output pins; will throw an error
-;; if a pin state other than :high or :low is detected. skip-timespec can be used
-;; to improve performance by specifying how many cycles to let pass between polling
-;; the pin.
+(defun pin-duty-cycle (p stop &optional (skip 1))
+  "Returns the duty cycle of the given pin, as a fraction. Records for the
+length given by the timespec. Works for digital output pins; will throw an error
+if a pin state other than :high or :low is detected. skip-timespec can be used
+to improve performance by specifying how many cycles to let pass between polling
+the pin.
 
-;; Respects *core*"
-;;   (resolve-timespecs (stop) (skip)
-;;     ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
-;;     ;; before timespec? Or after? Does it always run exactly timespec cycles?)
-;;     (loop
-;;        with positive-samples = 0
-;;        for total-samples from 1
-;;        ;; use ecase to throw errors on non-digital values.
-;;        when (ecase (pin p)
-;;               (:high t)
-;;               (:low nil))
-;;        do (incf positive-samples)
-;;        while (<= (+ (elapsed) skip) stop)
-;;        do (cycles-rel skip)
-;;        finally (return (/ positive-samples total-samples)))))
+Respects *core*"
+  (resolve-timespecs (stop) (skip)
+    ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
+    ;; before timespec? Or after? Does it always run exactly timespec cycles?)
+    (loop
+       with positive-samples = 0
+       for total-samples from 1
+       ;; use ecase to throw errors on non-digital values.
+       when (ecase (pin p)
+              (:high t)
+              (:low nil))
+       do (incf positive-samples)
+       while (<= (+ (elapsed) skip) stop)
+       do (cycles-rel skip)
+       finally (return (/ positive-samples total-samples)))))
 
 ;; TODO: normalize the parameters. I think we should call start, stop, skip,
 ;; finally. (i.e, rename timeout -> stop on other methods). Whenever we do this,
