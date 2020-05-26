@@ -20,11 +20,6 @@ that uart so far.")))
        (ash (intify c3) 8)
        (intify c4))))
 
-(defun uart-fifo-empty-p (fifo)
-  "Reimplementing the static function uart_fifo_isempty()."
-  ;; I messed up the logic for this once and wasted about >4 hours
-  (<= (mod (- (uart-fifo-t.write fifo) (uart-fifo-t.read fifo)) 64) 1))
-
 (defmacro with-pin (port-var pin-var pin-designator &body body)
   "Bind port-var to the upper case character of the port and pin-var to the
 numerical (0-7) pin number inside that port."
@@ -41,7 +36,8 @@ numerical (0-7) pin number inside that port."
               (avr-ioctl (get-ptr instance) (avr-ioctl-def #\i #\o #\s port-char)
                          ioport-state))
              ;; TODO: NOT THIS NOT THIS NOT THIS FILE AN AUTOWRAP BUG
-             (ioport-state-long (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
+             (ioport-state-long
+              (cffi:mem-ref (autowrap:ptr ioport-state) :unsigned-long))
              (ddr (mod (ash ioport-state-long -15) 256))
              (port (mod (ash ioport-state-long -7) 256))
              (is-output (plusp (logand (ash 1 pin-num) ddr)))
@@ -135,32 +131,6 @@ cffi:get-callback)"
 (defmethod core-uart-data ((instance avr-core) channel)
   (declare ((integer 0 9) channel))
   (nth channel (get-uarts instance)))
-
-(defun channel-fifo-empty-p (instance channel)
-  (let* ((io-uart
-          (autowrap:wrap-pointer
-           (autowrap:ptr
-            (do ((io-uart
-                  (avr-t.io-port* (get-ptr instance))
-                  (avr-io-t.next* io-uart)))
-                ((and
-                  (not (cffi:null-pointer-p (avr-io-t.ioctl io-uart)))
-                  (/= -1
-                      (cffi:with-foreign-object (param :uint32)
-                        (cffi:foreign-funcall-pointer
-                         (avr-io-t.ioctl io-uart) ()
-                         :pointer (autowrap:ptr io-uart)
-                         :uint32 (avr-ioctl-def #\u #\a #\g
-                                                (uart-channel-char channel))
-                         :pointer param
-                         :int))))
-                 io-uart)
-              (when (cffi:null-pointer-p (avr-io-t.next io-uart))
-                (error "Could not find IO module for uart channel"))))
-           'avr-uart-t))
-         (fifo-empty-p (uart-fifo-empty-p (avr-uart-t.input io-uart))))
-    (break)
-    fifo-empty-p))
   
 (defmethod core-uart-send ((instance avr-core) byte channel)
   ;; The problem with XON and friends is that simavr has its own 64-byte
@@ -188,25 +158,29 @@ cffi:get-callback)"
           (autowrap:wrap-pointer
            (autowrap:ptr
             (do ((io-uart
-                  (avr-t.io-port* (get-ptr instance))
-                  (avr-io-t.next* io-uart)))
+                  (c-ref (get-ptr instance) avr-t :io-port *)
+                  (c-ref io-uart avr-io-t :next *)))
                 ((and
-                  (not (cffi:null-pointer-p (avr-io-t.ioctl io-uart)))
+                  (not (cffi:null-pointer-p (c-ref io-uart avr-io-t :ioctl)))
                   (/= -1
                       (cffi:with-foreign-object (param :uint32)
                         (cffi:foreign-funcall-pointer
-                         (avr-io-t.ioctl io-uart) ()
+                         (c-ref io-uart avr-io-t :ioctl) ()
                          :pointer (autowrap:ptr io-uart)
                          :uint32 (avr-ioctl-def #\u #\a #\g
                                                 (uart-channel-char channel))
                          :pointer param
                          :int))))
                  io-uart)
-              (when (cffi:null-pointer-p (avr-io-t.next io-uart))
+              (when (cffi:null-pointer-p (c-ref io-uart avr-io-t :next))
                 (error "Could not find IO module for uart channel"))))
            'avr-uart-t))
-         (fifo-empty-p (uart-fifo-empty-p (avr-uart-t.input io-uart))))
-    (if fifo-empty-p
+         (fifo (c-ref io-uart avr-uart-t :input))
+         ;; I messed up the logic for this once and wasted about >4 hours
+         (fifo-space-p
+          (<= (mod (- (c-ref fifo uart-fifo-t :write)
+                      (c-ref fifo uart-fifo-t :read)) 64) 1)))
+    (if fifo-space-p
         (avr-raise-irq
          (avr-io-getirq (get-ptr instance)
                         (avr-ioctl-def #\u #\a #\r (uart-channel-char channel))
@@ -215,11 +189,11 @@ cffi:get-callback)"
         ;; avr_regbit_setto is defined in a header so we can't link to it.
         ;; (avr-regbit-setto (get-ptr instance) (avr-uart-t.dor io-uart) 1)
         )
-    fifo-empty-p))
+    fifo-space-p))
 
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
-  (setf (core-elapsed instance) (avr-t.cycle (get-ptr instance)))
+  (setf (core-elapsed instance) (c-ref (get-ptr instance) avr-t :cycle))
   )
 
 (cffi:defcallback cycle-timer-callback
@@ -234,13 +208,13 @@ cffi:get-callback)"
     (when (plusp n)
       ;; TODO: off-by-one errors, make sure we reset cycle limit appropriately
       ;; at the end, etc.
-      (setf (avr-t.run-cycle-limit avr) n)
+      (setf (c-ref avr avr-t :run-cycle-limit) n)
       (avr-cycle-timer-register avr
                                 n
                                 (cffi:callback cycle-timer-callback)
                                 (cffi:null-pointer))
       (call-next-method)
-      (setf (avr-t.run-cycle-limit avr) 1)
+      (setf (c-ref avr avr-t :run-cycle-limit) 1)
       )))
 
 (defmethod initialize-instance :after
@@ -262,11 +236,11 @@ cffi:get-callback)"
         (error "Malformatted firmware"))
       (avr-load-firmware (get-ptr instance) firmware))
 
-    (setf (avr-t.log (get-ptr instance)) +log-trace+)
-    (setf (avr-t.frequency (get-ptr instance)) frequency)
+    (setf (c-ref (get-ptr instance) avr-t :log) +log-trace+)
+    (setf (c-ref (get-ptr instance) avr-t :frequency) frequency)
     (when vcc
-      (setf (avr-t.vcc (get-ptr instance)) (floor (* 1000 vcc)))
-      (setf (avr-t.avcc (get-ptr instance)) (floor (* 1000 vcc)))
+      (setf (c-ref (get-ptr instance) avr-t :vcc) (floor (* 1000 vcc)))
+      (setf (c-ref (get-ptr instance) avr-t :avcc) (floor (* 1000 vcc)))
       )
 
     ;; TODO

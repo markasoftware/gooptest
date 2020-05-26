@@ -59,7 +59,8 @@
 
 (defpackage #:gooptest-avr
   (:nicknames #:goop-avr)
-  (:use #:cl #:alexandria #:gooptest #:gooptest-avr-cl-autowrap #:autowrap)
+  (:use #:cl #:alexandria #:gooptest #:gooptest-avr-cl-autowrap #:autowrap
+        #:plus-c)
   (:export #:make-core
 
            ;; non-functions

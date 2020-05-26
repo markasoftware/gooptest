@@ -6,7 +6,7 @@
   :license  "GPL-3.0"
   :version "0.0.1"
   :serial t
-  :depends-on (#:cffi #:cl-autowrap #:alexandria #:uiop #:babel)
+  :depends-on (#:cffi #:cl-autowrap #:cl-plus-c #:alexandria #:uiop #:babel)
   :components ((:file "package")
                (:file "src/gooptest")
                (:static-file "src/simavr-proxy.h")
