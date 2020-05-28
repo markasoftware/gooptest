@@ -299,7 +299,7 @@ error, otherwise you will get missing bytes.")
        (channel (core-uart-default-channel *core*))
        (baudrate *uart-baudrate*)
        (byte-size *uart-byte-size*)
-       (finally t)
+       finally
      &aux (cycles-per-byte (ceiling (core-frequency *core*)
                                     (/ baudrate byte-size)))
        buffer-overflowed-p)

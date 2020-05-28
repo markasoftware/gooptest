@@ -19,20 +19,17 @@ simulation"
       ;; in 1000 cycles, so the g of gooptest below was missing.
       (cycles 10000)
       (assert (uart-send "gooptest
-" :finally nil))
+"))
       (assert (until-uart "gOoPtEsT")))
 
     (runtest "Advanced Spongebobifying"
       (cycles 10000)
       (uart-send "gooptest
-" :finally nil)
-      (assert (until-uart "gOoPtEsT"))
-      ;; To demonstrate proper use of finally: If we set it to nil, we need to
-      ;; manually put cycles in-between the (uart-send) calls, otherwise the
-      ;; cycles are sent at too high a baud rate.
-      (cycles 1500)
+" :finally t)
+      ;; If we didn't use :finally t, we would need an extra (cycles 1500) or so
+      ;; here to manually add the delay between adjacent (uart-send) calls.
       (uart-send "junit
-" :finally nil)
+")
       (assert (until-uart "jUnIt")))
 
     (runtest "Buffer Overflow"
@@ -69,7 +66,7 @@ simulation"
         ;; this should fail; at the high baudrate, all bytes get through before
         ;; the 250ms. This would still fail without the (cycles 200 :ms)
         (cycles 200 :ms)
-        (uart-send lyrics :finally nil)
+        (uart-send lyrics)
         (assert (not (until-uart spongey-lyrics)))
         ;; Inspect (uart-string) here for fun; none of the new bytes exist!
         ))))
