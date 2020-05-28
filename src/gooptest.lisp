@@ -288,7 +288,7 @@ Respects *core*."
                 :channel channel :stop stop :skip skip :finally finally))
     ((unsigned-byte 8)
      (until-uart
-      (make-array 1 :initial-element text)
+      (make-array 1 :initial-element text :element-type '(unsigned-byte 8))
       :channel channel :stop stop :skip skip :finally finally))
     ((vector (unsigned-byte 8))
      (let ((start2 (length (uart-data channel))))
