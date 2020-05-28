@@ -2,6 +2,16 @@
 
 (in-package #:gooptest)
 
+(defvar *uart-baudrate* 115200
+  "The default baudrate for (uart-send). Note that if the frequency is not
+totally divisible by the byterate, you should decrease it to account for the
+error, otherwise you will get missing bytes.")
+(defvar *uart-byte-size* 10
+  "The default byte size for (uart-send)")
+(defvar *skip* 100
+  "The default number of cycles between polls for functions
+  like (cycles-between) and (until-uart)")
+
 (defvar *core* nil
   "The current core that functions like pin, cycles, etc operate on.")
 
@@ -26,7 +36,7 @@ very quickly on desktop (eg, 32-bit operations on an 8-bit microcontroller)."))
   (:documentation "Step forward n cycles."))
 
 (defmethod core-many-cycles ((c core) n)
-  (declare (fixnum n))
+  (declare (integer n))
   (assert (not (minusp n)))
   (do ((stop-abs (+ n (core-elapsed c)))) ((>= (core-elapsed c) stop-abs))
     (core-one-cycle c)))
@@ -149,6 +159,7 @@ digital state will not change the analog state, and vice versa."
   "Convert the given timespec into a number of cycles.
 
 Respects *core*."
+  (declare (boolean into-absolute))
   (destructuring-bind (n &optional (unit :cycle) absolute)
       (ensure-list timespec)
     (let ((cycles
@@ -199,19 +210,20 @@ Respects *core"
              (number (list n-or-timespec unit absolute)))
            nil))))
 
-(defun until-pin (pin-id state &optional (timeout '(1 :second)) (poll 100))
+(defun until-pin (pin-id state &optional (stop '(1 :second)) (skip *skip*))
   "Waits until the pin is in the given state. Returns non-nil if the pin is in
 the desired state.
 
 Respects *core*"
-  (resolve-timespecs (timeout) (poll)
+  (declare (pin-output state))
+  (resolve-timespecs (stop) (skip)
     (loop
-       while (<= (+ (elapsed) poll) timeout)
+       while (<= (+ (elapsed) skip) stop)
        thereis (eq (pin pin-id) state)
-       do (cycles-rel poll))))
+       do (cycles-rel skip))))
 
 (defmacro cycles-between
-    ((&key (start 0) stop (skip 100) (finally 0)) &body condition)
+    ((&key (start 0) stop (skip *skip*) (finally 0)) &body condition)
   "Runs :start cycles, then run condition every :skip cycles until it returns
 non-nil. If it never returns non-nil, stop running it after :stop
 cycles (counting from when cycles-between is called) anyway. Returns the
@@ -235,7 +247,7 @@ Respects *core*."
               do (cycles-rel ,skip))
          (cycles-abs ,finally)))))
 
-(defun pin-duty-cycle (p stop &optional (skip 1))
+(defun pin-duty-cycle (p stop &optional (skip *skip*))
   "Returns the duty cycle of the given pin, as a fraction. Records for the
 length given by the timespec. Works for digital output pins; will throw an error
 if a pin state other than :high or :low is detected. skip-timespec can be used
@@ -258,10 +270,8 @@ Respects *core*"
        do (cycles-rel skip)
        finally (return (/ positive-samples total-samples)))))
 
-;; TODO: normalize the parameters. I think we should call start, stop, skip,
-;; finally. (i.e, rename timeout -> stop on other methods). Whenever we do this,
-;; also update the etypecase below to be more recursive!
-(defun until-uart (text &key serial-port (stop '(1 :s)) (skip 100) (finally 0))
+(defun until-uart (text &key (channel (core-uart-default-channel *core*))
+                          (stop '(1 :s)) (skip *skip*) (finally 0))
   "Runs until the given text is sent over the serial port. Returns non-nil if
 that text was found before the timeout. Ignores text that was already sent
 before (until-uart) was called. Will poll at intervals indicated by skip.
@@ -269,29 +279,22 @@ Handles strings, characters, numbers/unsigned bytes, and vectors of unsigned
 bytes as text.
 
 Respects *core*."
-  ;; TODO: do we need to store string length separately from binary length? I
-  ;; want it all to be ascii but who knows.
-  (let ((start (length (uart-data))))
-    (cycles-between (:start 0 :stop stop :skip skip :finally finally)
-      (etypecase text
-        (string (search text (uart-string serial-port)
-                        :from-end t :start2 start))
-
-        (character (position text (uart-string serial-port)
-                             :from-end t :start start))
-
-        ((unsigned-byte 8) (position text (uart-data serial-port)
-                                     :from-end t :start start))
-
-        ((vector (unsigned-byte 8)) (search text (uart-data serial-port)
-                                            :from-end t :start2 start))))))
-
-(defvar *uart-baudrate* 115200
-  "The default baudrate for (uart-send). Note that if the frequency is not
-totally divisible by the byterate, you should decrease it to account for the
-error, otherwise you will get missing bytes.")
-(defvar *uart-byte-size* 10
-  "The default byte size for (uart-send)")
+  (etypecase text
+    (string (until-uart
+             (babel:string-to-octets text)
+             :channel channel :stop stop :skip skip :finally finally))
+    (character (until-uart
+                (coerce (list text) 'string)
+                :channel channel :stop stop :skip skip :finally finally))
+    ((unsigned-byte 8)
+     (until-uart
+      (make-array 1 :initial-element text)
+      :channel channel :stop stop :skip skip :finally finally))
+    ((vector (unsigned-byte 8))
+     (let ((start2 (length (uart-data channel))))
+       (cycles-between (:stop stop :skip skip :finally finally)
+         (search text (uart-data channel)
+                 :from-end t :start2 start2))))))
 
 (defun uart-send
     (data
@@ -360,4 +363,5 @@ run. :teardown is run after each test."
          (format t "PASS~%"))))
 
 (defun assert-pin (state pin-sym)
+  (declare (pin-output state))
   (assert (eq state (pin pin-sym))))
