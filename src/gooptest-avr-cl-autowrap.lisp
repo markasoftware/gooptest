@@ -10,4 +10,4 @@
            :exclude-arch ("i686-pc-windows-msvc"
                           "x86_64-pc-windows-msvc")
            :no-accessors t
-           :spec-path '(gooptest))
+           :spec-path '(gooptest autowrap-specs))

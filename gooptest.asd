@@ -12,7 +12,18 @@
                (:static-file "src/simavr-proxy.h")
                (:file "src/gooptest-avr-cl-autowrap")
                (:file "src/gooptest-avr")
-               ))
+
+               (:module "autowrap-specs"
+                :pathname "autowrap-specs"
+                :components
+                ((:static-file "simavr-proxy.x86_64-pc-linux-gnu.spec")
+                 (:static-file "simavr-proxy.x86_64-apple-darwin9.spec")
+                 (:static-file "simavr-proxy.x86_64-unknown-freebsd.spec")
+                 (:static-file "simavr-proxy.x86_64-unknown-openbsd.spec")
+                 (:static-file "simavr-proxy.i686-pc-linux-gnu.spec")
+                 (:static-file "simavr-proxy.i686-apple-darwin9.spec")
+                 (:static-file "simavr-proxy.i386-unknown-freebsd.spec")
+                 (:static-file "simavr-proxy.i386-unknown-openbsd.spec")))))
 
 (asdf:defsystem #:gooptest/examples
   :description "Examples for a microcontroller testing framework."
