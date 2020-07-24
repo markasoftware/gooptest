@@ -1,7 +1,8 @@
 (in-package :gooptest-avr)
 
-(cffi:load-foreign-library "libelf.so")
-(cffi:load-foreign-library "libsimavr.so")
+(defun load-foreign-libraries ()
+  (cffi:load-foreign-library "libelf.so")
+  (cffi:load-foreign-library "libsimavr.so"))
 
 (defclass avr-core (core)
   ((avr-ptr :accessor get-ptr :type avr-t)
@@ -10,6 +11,10 @@
           :documentation "Each uart is either nil, indicating not initialized,
 or a vector of unsigned bytes, representing everything received over
 that uart so far.")))
+
+(defvar *gdb-port* nil
+  "When non-nil, simulations will not start until a GDB debugger attaches to the
+given port.")
 
 (defun avr-ioctl-def (c1 c2 c3 c4)
   "See simavr/sim_io.h"
@@ -191,6 +196,22 @@ cffi:get-callback)"
         )
     fifo-space-p))
 
+(defmethod core-spi-default-channel ((instance avr-core))
+  0)
+
+(defmethod core-spi-set-handler ((instance avr-core) handler channel)
+  "Channel is an integer indicating the SPI port as understood by simavr."
+  (declare ((integer 0) channel))
+  (let* ((irq-def (avr-ioctl-def #\s #\p #\i channel))
+         ;; TODO: replace with +spi-irq-input+ (and output, later)
+         (output-irq (avr-io-getirq irq-def 0))
+         (input-irq (avr-io-getirq irq-def 1)))
+    (avr-irq-register-notify
+     input-irq
+     (make-irq-callback byte
+       `(avr-raise-irq ,output-irq (funcall ,handler byte)))
+     (cffi:null-pointer))))
+
 (defmethod core-one-cycle ((instance avr-core))
   (avr-run (get-ptr instance))
   (setf (core-elapsed instance) (c-ref (get-ptr instance) avr-t :cycle))
@@ -240,6 +261,12 @@ cffi:get-callback)"
       (setf (c-ref (get-ptr instance) avr-t :vcc) (floor (* 1000 vcc)))
       (setf (c-ref (get-ptr instance) avr-t :avcc) (floor (* 1000 vcc)))
       )
+
+    (when *gdb-port*
+      (setf (c-ref (get-ptr instance) avr-t :gdb-port) *gdb-port*)
+      ;; prevents core from starting until gdb attaches
+      (setf (c-ref (get-ptr instance) avr-t :state) +cpu-stopped+)
+      (avr-gdb-init (get-ptr instance)))
 
     ;; TODO
     ;; (trivial-garbage:finalize instance (lambda ()

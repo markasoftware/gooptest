@@ -6,6 +6,8 @@
 (defun at-least-two ()
   "Test that an LED turns on when at least two of three buttons are depressed."
 
+  (load-foreign-libraries)
+
   (in-suite at-least-two)
 
   (runtest "Light starts in the off state"

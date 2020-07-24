@@ -247,14 +247,17 @@ Respects *core*."
               do (cycles-rel ,skip))
          (cycles-abs ,finally)))))
 
-(defun pin-duty-cycle (p stop &optional (skip *skip*))
+(defun pin-duty-cycle (p &key stop (skip *skip*) pull)
   "Returns the duty cycle of the given pin, as a fraction. Records for the
 length given by the timespec. Works for digital output pins; will throw an error
-if a pin state other than :high or :low is detected. skip-timespec can be used
-to improve performance by specifying how many cycles to let pass between polling
-the pin.
+if a pin state other than :high or :low is detected. pull can be :up or :down to
+measure as if there's a pullup or pulldown resistor. skip can be used to improve
+performance by specifying how many cycles to let pass between polling the pin.
 
 Respects *core*"
+  (declare ((or (member :up :down) null) pull))
+  ;; required key arguments :|
+  (assert stop)
   (resolve-timespecs (stop) (skip)
     ;; TODO: verify off-by-one errors (i.e, does it stop one poll-timespec
     ;; before timespec? Or after? Does it always run exactly timespec cycles?)
@@ -262,9 +265,16 @@ Respects *core*"
        with positive-samples = 0
        for total-samples from 1
        ;; use ecase to throw errors on non-digital values.
-       when (ecase (pin p)
-              (:high t)
-              (:low nil))
+       when (ecase pull
+              ((nil) (ecase (pin p)
+                       (:high t)
+                       (:low nil)))
+              (:up (ecase (pin p)
+                     (:low t)
+                     (:float nil)))
+              (:down (ecase (pin p)
+                       (:high t)
+                       (:float nil))))
        do (incf positive-samples)
        while (<= (+ (elapsed) skip) stop)
        do (cycles-rel skip)
@@ -314,7 +324,7 @@ the delay between characters. If finally is non-nil (the default), will wait at
 the end of transmission the equivalent of one characters length, so that it is
 safe to call (uart-send) multiple times in a row.
 
-Respects *core*"
+Respects *core*."
   (setf data
         (etypecase data
           ((or string character) (babel:string-to-octets (string data)))

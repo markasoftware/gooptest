@@ -7,6 +7,8 @@
 (defun analog-to-serial ()
   "Test that the analog voltage gets sent over serial UART."
 
+  (load-foreign-libraries)
+
   (in-suite analog-to-serial)
 
   (runtest "Sends Hello World on boot"

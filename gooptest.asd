@@ -4,7 +4,7 @@
   :description "A microcontroller testing framework."
   :author "Mark Polyakov"
   :license  "GPL-3.0"
-  :version "0.0.1"
+  :version "0.1.0"
   :serial t
   :depends-on (#:cffi #:cl-autowrap #:cl-plus-c #:alexandria #:uiop #:babel)
   :components ((:file "package")
@@ -29,7 +29,7 @@
   :description "Examples for a microcontroller testing framework."
   :author "Mark Polyakov"
   :license "GPL-3.0"
-  :version "0.0.1"
+  :version "0.1.0"
   :serial t
   :depends-on (#:gooptest)
   :pathname "examples"

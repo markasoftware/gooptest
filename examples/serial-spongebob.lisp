@@ -8,6 +8,8 @@
   "Test that our text gets spongebobified, and explore some nuances of uart
 simulation"
 
+  (load-foreign-libraries)
+
   ;; Two compounding issues: simavr is bugged and thinks 8N1 has 11 bits per
   ;; byte instead of 10, and 115200 has a -3.5% error at 16MHz.
   (let ((*suite* 'serial-spongebob)

@@ -7,6 +7,8 @@
   "Test that a blinking LED on the Arduino UNO actually blinks."
   ;; light starts off, turns on after .5s, then turns off after .5s, etc.
 
+  (load-foreign-libraries)
+
   (in-suite blink)
 
   (runtest "Light starts in the off state."

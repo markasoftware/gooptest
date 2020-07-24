@@ -20,6 +20,8 @@
            #:uart-send
            #:uart-string
            #:until-uart
+           #:set-spi-handler
+           #:spi-handle
 
            #:defsuite
            #:in-suite
@@ -60,9 +62,13 @@
         #:plus-c)
   (:export #:make-core
 
-           ;; non-functions
-           #:avr-core                   ; class
+           #:load-foreign-libraries
 
            #:make-arduino-uno
            #:make-arduino-nano
+
+           ;; non-functions
+           #:avr-core                   ; class
+
+           #:*gdb-port*
            ))
